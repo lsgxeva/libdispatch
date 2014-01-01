@@ -23,9 +23,12 @@
 #include "protocol.h"
 #endif
 
-#if __linux__
+#if TARGET_OS_LINUX
 #include <sys/eventfd.h>
-#define TARGET_OS_LINUX 1
+#endif
+
+#if TARGET_OS_WIN32
+#define DISPATCH_HAVE_WORKQUEUES 1
 #endif
 
 #if (!DISPATCH_HAVE_WORKQUEUES || DISPATCH_DEBUG) && \
@@ -36,12 +39,24 @@
 #define pthread_workqueue_t void*
 #endif
 
+#if TARGET_OS_WIN32
+#define DISPATCH_WIN32_MAX_THREADS 64
+#define DISPATCH_WIN32_MAX_OVERCOMMIT_THREADS (512 - DISPATCH_WIN32_MAX_THREADS)
+#endif
+
 #if DISPATCH_HAVE_WORKQUEUES
 #define DISPATCH_WORKQ_OPTION_OVERCOMMIT WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
 #define DISPATCH_WORKQ_BG_PRIOQUEUE WORKQ_BG_PRIOQUEUE
 #define DISPATCH_WORKQ_LOW_PRIOQUEUE WORKQ_LOW_PRIOQUEUE
 #define DISPATCH_WORKQ_DEFAULT_PRIOQUEUE WORKQ_DEFAULT_PRIOQUEUE
 #define DISPATCH_WORKQ_HIGH_PRIOQUEUE WORKQ_HIGH_PRIOQUEUE
+
+#elif TARGET_OS_WIN32
+#define DISPATCH_WORKQ_OPTION_OVERCOMMIT 0x1u
+#define DISPATCH_WORKQ_BG_PRIOQUEUE THREAD_PRIORITY_LOWEST
+#define DISPATCH_WORKQ_LOW_PRIOQUEUE THREAD_PRIORITY_BELOW_NORMAL
+#define DISPATCH_WORKQ_DEFAULT_PRIOQUEUE THREAD_PRIORITY_NORMAL
+#define DISPATCH_WORKQ_HIGH_PRIOQUEUE THREAD_PRIORITY_HIGHEST
 #endif
 
 static void _dispatch_cache_cleanup(void *value);
@@ -54,6 +69,10 @@ static inline void _dispatch_queue_wakeup_global(dispatch_queue_t dq);
 static _dispatch_thread_semaphore_t _dispatch_queue_drain(dispatch_queue_t dq);
 static inline _dispatch_thread_semaphore_t
 		_dispatch_queue_drain_one_barrier_sync(dispatch_queue_t dq);
+#if TARGET_OS_WIN32
+static void __stdcall _dispatch_worker_thread5(TP_CALLBACK_INSTANCE *instance,
+		void *context, TP_WORK *work);
+#endif
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
 static void _dispatch_worker_thread3(void *context);
 #endif
@@ -65,7 +84,7 @@ static void *_dispatch_worker_thread(void *context);
 static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
 #endif
 
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 static dispatch_queue_t _dispatch_queue_wakeup_main(void);
 static void _dispatch_main_queue_drain(void);
 #endif
@@ -78,10 +97,15 @@ static mach_port_t main_q_port;
 static void _dispatch_main_q_port_init(void *ctxt);
 #endif
 
-#if TARGET_OS_LINUX
-static dispatch_once_t _dispatch_main_q_eventfd_pred;
-static void _dispatch_main_q_eventfd_init(void *ctxt);
-static int main_q_eventfd = -1;
+#if TARGET_OS_LINUX || TARGET_OS_WIN32
+static dispatch_once_t _dispatch_main_q_handle_pred;
+static void _dispatch_main_q_handle_init(void *ctxt);
+static dispatch_handle_t _main_q_handle = ~(dispatch_handle_t)0;
+#endif
+
+#if TARGET_OS_WIN32
+static TP_POOL *_dispatch_tp_pool;
+static TP_POOL *_dispatch_tp_pool_overcommit;
 #endif
 
 #pragma mark -
@@ -132,19 +156,23 @@ static struct dispatch_semaphore_s _dispatch_thread_mediator[] = {
 };
 #endif
 
-#define MAX_THREAD_COUNT 255
+#define MAX_PTHREAD_COUNT 255
 
 struct dispatch_root_queue_context_s {
 	union {
 		struct {
 			unsigned int volatile dgq_pending;
-#if DISPATCH_HAVE_WORKQUEUES
+#if TARGET_OS_WIN32 || DISPATCH_HAVE_WORKQUEUES
 			int dgq_wq_priority, dgq_wq_options;
+#if TARGET_OS_WIN32
+			TP_WORK* dgq_work_item;
+			TP_CALLBACK_ENVIRON* dgq_callback_environ;
+#endif
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 			pthread_workqueue_t dgq_kworkqueue;
 #endif
-#endif // DISPATCH_HAVE_WORKQUEUES
-#if DISPATCH_USE_PTHREAD_POOL
+#endif	// TARGET_OS_WIN32 || DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_ENABLE_THREAD_POOL
 			dispatch_semaphore_t dgq_thread_mediator;
 			uint32_t dgq_thread_pool_size;
 #endif
@@ -156,91 +184,91 @@ struct dispatch_root_queue_context_s {
 DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 		.dgq_thread_mediator = &_dispatch_thread_mediator[
 				DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY],
-		.dgq_thread_pool_size = MAX_THREAD_COUNT,
+		.dgq_thread_pool_size = MAX_PTHREAD_COUNT,
 #endif
 	}}},
 };
@@ -421,7 +449,7 @@ static inline bool
 _dispatch_root_queues_init_workq(void)
 {
 	bool result = false;
-#if DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
 	bool disable_wq = false;
 #if DISPATCH_USE_PTHREAD_POOL
 	disable_wq = slowpath(getenv("LIBDISPATCH_DISABLE_KWQ"));
@@ -436,6 +464,37 @@ _dispatch_root_queues_init_workq(void)
 		result = !r;
 	}
 #endif // HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
+#if TARGET_OS_WIN32
+	if (!result && !disable_wq) {
+		_dispatch_tp_pool = dispatch_assume(CreateThreadpool(NULL));
+		_dispatch_tp_pool_overcommit = dispatch_assume(CreateThreadpool(NULL));
+
+		SetThreadpoolThreadMaximum(_dispatch_tp_pool, DISPATCH_WIN32_MAX_THREADS);
+		SetThreadpoolThreadMaximum(_dispatch_tp_pool_overcommit,
+								   DISPATCH_WIN32_MAX_OVERCOMMIT_THREADS);
+
+		for (int i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
+			struct dispatch_queue_s *dq = &_dispatch_root_queue[i];
+			struct dispatch_root_queue_context_s *qc =
+				(struct dispatch_root_queue_context_s *)dq->do_ctxt[i];
+
+			qc->dgq_callback_environ =
+				(TP_CALLBACK_ENVIRON *)malloc(sizeof(*qc->dgq_callback_environ));
+			(void)dispatch_assume(qc->dgq_callback_environ);
+			InitializeThreadpoolEnvironment(&qc->dgq_callback_environ);
+			SetThreadpoolCallbackRunsLong(&qc->dgq_callback_environ);
+			SetThreadpoolCallbackPool(
+				&qc->dgq_callback_environ,
+				(qc->dgq_wq_options & DISPATCH_WORKQ_OPTION_OVERCOMMIT)
+					? _dispatch_tp_pool_overcommit
+					: _dispatch_tp_pool);
+			qc->dgq_work_item = dispatch_assume(CreateThreadpoolWork(
+				_dispatch_worker_thread5, dq, qc->dgq_callback_environ));
+		}
+		return true;
+	}
+#endif	// TARGET_OS_WIN32
+
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 	if (!result) {
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
@@ -522,8 +581,6 @@ _dispatch_root_queues_init(void *context DISPATCH_UNUSED)
 	}
 
 }
-
-#define countof(x) (sizeof(x) / sizeof(x[0]))
 
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
@@ -1484,7 +1541,7 @@ _dispatch_barrier_sync_f_slow_invoke(void *ctxt)
 	struct dispatch_barrier_sync_slow2_s *dbss2 = ctxt;
 
 	dispatch_assert(dbss2->dbss2_dq == _dispatch_queue_get_current());
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 	// When the main queue is bound to the main thread
 	if (dbss2->dbss2_dq == &_dispatch_main_q && pthread_main_np()) {
 		dbss2->dbss2_func(dbss2->dbss2_ctxt);
@@ -1940,7 +1997,7 @@ _dispatch_wakeup(dispatch_object_t dou)
 	// if the source is suspended or canceled.
 	if (!dispatch_atomic_cmpxchg2o(dou._do, do_suspend_cnt, 0,
 			DISPATCH_OBJECT_SUSPEND_LOCK)) {
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 		if (dou._dq == &_dispatch_main_q) {
 			return _dispatch_queue_wakeup_main();
 		}
@@ -1955,7 +2012,7 @@ _dispatch_wakeup(dispatch_object_t dou)
 				// probe does
 }
 
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 DISPATCH_NOINLINE
 dispatch_queue_t
 _dispatch_queue_wakeup_main(void)
@@ -1965,8 +2022,8 @@ _dispatch_queue_wakeup_main(void)
 
 	dispatch_once_f(&_dispatch_main_q_port_pred, NULL,
 			_dispatch_main_q_port_init);
-	if (main_q_port) {
-		kr = _dispatch_send_wakeup_main_thread(main_q_port, 0);
+	if (_main_q_port) {
+		kr = _dispatch_send_wakeup_main_thread(_main_q_port, 0);
 
 		switch (kr) {
 		case MACH_SEND_TIMEOUT:
@@ -1978,21 +2035,22 @@ _dispatch_queue_wakeup_main(void)
 			break;
 		}
 	}
-#endif
+#elif TARGET_OS_LINUX || TARGET_OS_WIN32
+	dispatch_once_f(&_dispatch_main_q_handle_pred, NULL,
+			_dispatch_main_q_handle_init);
+	if (_main_q_handle != ~(dispatch_handle_t)0) {
 #if TARGET_OS_LINUX
-	dispatch_once_f(&_dispatch_main_q_eventfd_pred, NULL,
-			_dispatch_main_q_eventfd_init);
-	if (main_q_eventfd != -1) {
 		int result;
 		do {
-			result = eventfd_write(main_q_eventfd, 1);
+			result = eventfd_write(_main_q_handle, 1);
 		} while (result == -1 && errno == EINTR);
 		(void)dispatch_assume_zero(result);
-	}
+#elif TARGET_OS_WIN32
+		(void)dispatch_assume(SetEvent((HANDLE)_main_q_handle));
 #endif
 	return NULL;
 }
-#endif	// DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#endif	// DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 
 DISPATCH_NOINLINE
 static void
@@ -2004,6 +2062,13 @@ _dispatch_queue_wakeup_global_slow(dispatch_queue_t dq, unsigned int n)
 
 	dispatch_debug_queue(dq, __func__);
 	dispatch_once_f(&pred, NULL, _dispatch_root_queues_init);
+
+#if TARGET_OS_WIN32
+	dispatch_assume(qc->dgq_work_item);
+	for (unsigned int i = 0; i < n; ++i)
+		SubmitThreadpoolWork(qc->dgq_work_item);
+	return;
+#endif	// TARGET_OS_WIN32
 
 #if DISPATCH_HAVE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
@@ -2232,7 +2297,7 @@ _dispatch_queue_serial_drain_till_empty(dispatch_queue_t dq)
 	_dispatch_force_cache_cleanup();
 }
 
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 void
 _dispatch_main_queue_drain(void)
 {
@@ -2448,6 +2513,36 @@ _dispatch_worker_thread3(void *context)
 }
 #endif
 
+#if TARGET_OS_WIN32
+static void __stdcall
+_dispatch_worker_thread5(TP_CALLBACK_INSTANCE *instance DISPATCH_UNUSED,
+		void *context, TP_WORK *work DISPATCH_UNUSED)
+{
+	dispatch_queue_t dq = (dispatch_queue_t)context;
+	struct dispatch_root_queue_context_s *qc =
+			(struct dispatch_root_queue_context_s *)dq->do_ctxt;
+
+	  (void)dispatch_atomic_dec2o(qc, dgq_pending);
+
+	int old_priority = GetThreadPriority(GetCurrentThread());
+	dispatch_assume(old_priority != THREAD_PRIORITY_ERROR_RETURN);
+	dispatch_assume(SetThreadPriority(GetCurrentThread(), qc->dgq_wq_priority));
+
+	bool do_bg_mode = qc->dgq_wq_priority == DISPATCH_WORKQ_BG_PRIOQUEUE;
+	if (do_bg_mode && !SetThreadPriority(THREAD_MODE_BACKGROUND_BEGIN)) {
+		dispatch_assume(GetLastError() == ERROR_THREAD_MODE_ALREADY_BACKGROUND);
+		do_bg_mode = false;
+	}
+
+	_dispatch_worker_thread4(dq);
+
+	dispatch_assume(!do_bg_mode || SetThreadPriority(THREAD_MODE_BACKGROUND_END));
+	dispatch_assume(SetThreadPriority(GetCurrentThread(), old_priority));
+
+	_dispatch_call_tsd_destructors();
+}
+#endif
+
 #if HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 // 6618342 Contact the team that owns the Instrument DTrace probe before
 //         renaming this symbol
@@ -2460,7 +2555,6 @@ _dispatch_worker_thread2(int priority, int options,
 	dispatch_queue_t dq = _dispatch_wq2root_queues[priority][options];
 	struct dispatch_root_queue_context_s *qc = dq->do_ctxt;
 
-	(void)dispatch_atomic_dec2o(qc, dgq_pending);
 	_dispatch_worker_thread4(dq);
 }
 #endif
@@ -2531,7 +2625,7 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 
 static bool _dispatch_program_is_probably_callback_driven;
 
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 static bool main_q_is_draining;
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
@@ -2584,13 +2678,13 @@ _dispatch_main_queue_callback_4CF(mach_msg_header_t *msg DISPATCH_UNUSED)
 
 #endif
 
-#if TARGET_OS_LINUX
-int
-dispatch_get_main_queue_eventfd_np()
+#if TARGET_OS_LINUX || TARGET_OS_WIN32
+dispatch_handle_t
+dispatch_get_main_queue_handle_np()
 {
-	dispatch_once_f(&_dispatch_main_q_eventfd_pred, NULL,
-		_dispatch_main_q_eventfd_init);
-	return main_q_eventfd;
+	dispatch_once_f(&_dispatch_main_q_handle_pred, NULL,
+		_dispatch_main_q_handle_init);
+	return _main_q_handle;
 }
 
 void
@@ -2609,26 +2703,40 @@ dispatch_main_queue_drain_np()
 	_dispatch_queue_set_mainq_drain_state(false);
 }
 
-static
-void _dispatch_main_q_eventfd_init(void *ctxt DISPATCH_UNUSED)
+static void
+_dispatch_main_q_handle_init(void *ctxt DISPATCH_UNUSED)
 {
+#if TARGET_OS_LINUX
 	_dispatch_safe_fork = false;
-	main_q_eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-	(void)dispatch_assume(main_q_eventfd != -1);
+	_main_q_handle = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	(void)dispatch_assume(_main_q_handle != -1);
+#elif TARGET_OS_WIN32
+	// Manual-reset event; default security attributes; unsignaled; unnamed.
+	_main_q_handle = CreateEvent(NULL, TRUE, FALSE, NULL);
+	(void)dispatch_assume(_main_q_handle);
+#endif
 	_dispatch_program_is_probably_callback_driven = true;
 }
-#endif
+#endif	// TARGET_OS_LINUX || TARGET_OS_WIN32
 
 void
 dispatch_main(void)
 {
-	if (pthread_main_np()) {
+	if (_dispatch_set_main_thread()) {
 		_dispatch_program_is_probably_callback_driven = true;
+#if TARGET_OS_WIN32
+		SuspendThread(GetCurrentThread());
+		DISPATCH_CRASH("SuspendThread() returned");
+#else
 		pthread_exit(NULL);
 		DISPATCH_CRASH("pthread_exit() returned");
+#endif
 	}
 	DISPATCH_CLIENT_CRASH("dispatch_main() must be called on the main thread");
 }
+
+// Signal-handling thread. n/a on Win32.
+#if !TARGET_OS_WIN32
 
 DISPATCH_NOINLINE DISPATCH_NORETURN
 static void
@@ -2667,6 +2775,7 @@ _dispatch_queue_cleanup2(void)
 		_dispatch_wakeup(&_dispatch_main_q);
 	}
 
+#if !TARGET_OS_WIN32
 	// overload the "probably" variable to mean that dispatch_main() or
 	// similar non-POSIX API was called
 	// this has to run before the DISPATCH_COCOA_COMPAT below
@@ -2675,6 +2784,7 @@ _dispatch_queue_cleanup2(void)
 				_dispatch_sig_thread);
 		sleep(1); // workaround 6778970
 	}
+#endif
 
 #if DISPATCH_COCOA_COMPAT
 	dispatch_once_f(&_dispatch_main_q_port_pred, NULL,
@@ -2694,12 +2804,11 @@ _dispatch_queue_cleanup2(void)
 		DISPATCH_VERIFY_MIG(kr);
 		(void)dispatch_assume_zero(kr);
 	}
-#endif
-#if TARGET_OS_LINUX
-	dispatch_once_f(&_dispatch_main_q_eventfd_pred, NULL,
-			_dispatch_main_q_eventfd_init);
-	int fd = main_q_eventfd;
-	main_q_eventfd = -1;
+#elif TARGET_OS_LINUX
+	dispatch_once_f(&_dispatch_main_q_handle_pred, NULL,
+			_dispatch_main_q_handle_init);
+	int fd = _main_q_handle;
+	_main_q_handle = -1;
 
 	if (fd != -1) {
 		close(fd);

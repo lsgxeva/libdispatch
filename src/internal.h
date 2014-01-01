@@ -230,6 +230,16 @@ void _dispatch_abort(size_t line, long val);
 DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
 void _dispatch_log(const char *msg, ...);
 
+#undef countof
+#define countof(x) (sizeof(x) / sizeof(x[0]))
+
+#if __GNUC__
+#define _dispatch_eval_if_constexpr(expr, block) \
+	if (__builtin_constant_p(e)) { block }
+#else
+#define _dispatch_eval_if_constexpr(expr, block) if (0) {}
+#endif		
+
 /*
  * For reporting bugs within libdispatch when using the "_debug" version of the
  * library.
@@ -265,6 +275,20 @@ void _dispatch_log(const char *msg, ...);
  *
  * In particular, we wrap all system-calls with assume() macros.
  */
+#define dispatch_assume(e) (e)
+#define dispatch_assume_ptr(e) (e)
+
+ /*
+ * A lot of API return zero upon success and not-zero on fail. Let's capture
+ * and log the non-zero value
+ */
+#define dispatch_assume_zero(e) (e)
+
+#if __GNUC__
+#undef dispatch_assume_ptr
+#define dispatch_assume_ptr dispatch_assume
+
+#undef dispatch_assume
 #define dispatch_assume(e) ({ \
 		typeof(e) _e = fastpath(e); /* always eval 'e' */ \
 		if (!_e) { \
@@ -306,6 +330,42 @@ void _dispatch_log(const char *msg, ...);
 			} \
 		} \
 	} while (0)
+#elif TARGET_OS_WIN32
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+dispatch_close_handle(HANDLE h)
+{
+	if (!h || h == INVALID_HANDLE_VALUE) return;
+	CloseHandle(h);
+}
+
+
+DISPATCH_ALWAYS_INLINE
+intptr_t
+_dispatch_assume(int line_number, intptr_t x) {
+  if (!x) _dispatch_bug(line_number, x);
+  return x;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline HANDLE
+_dispatch_assume_handle(int line_number, HANDLE x) {
+	if (x && x != INVALID_HANDLE_VALUE) _dispatch_bug(line_number, (uintptr_t)x);
+	return x;
+}
+
+#define dispatch_assume_handle(h) _dispatch_assume_handle(__LINE__, (h))
+
+#undef dispatch_assume
+#define dispatch_assume(e) _dispatch_assume(__LINE__, (e))
+
+#undef dispatch_assume_ptr
+#define dispatch_assume_ptr(e) (void*)_dispatch_assume(__LINE__, (intptr_t)(e))
+
+#undef dispatch_assume_zero
+#define dispatch_assume_zero(e) _dispatch_assume(__LINE__, !(e))
+#endif	// __GNUC__
 
 /* Make sure the debug statments don't get too stale */
 #define _dispatch_debug(x, args...) \
