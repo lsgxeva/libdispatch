@@ -36,22 +36,26 @@ struct dispatch_sema_notify_s {
 	void (*dsn_func)(void *);
 };
 
+#if (USE_MACH_SEM + USE_POSIX_SEM + USE_WIN32_SEM) > 1
+#error "Too many supported semaphore types"
+#elif USE_MACH_SEM
+	typedef semaphore_t dispatch_platform_semaphore_t;
+#elif USE_POSIX_SEM
+	typedef sem_t* dispatch_platform_semaphore_t;
+#elif USE_WIN32_SEM
+	typedef HANDLE dispatch_platform_semaphore_t;
+#else
+#error "No supported semaphore type"
+#endif
+
 DISPATCH_CLASS_DECL(semaphore);
 struct dispatch_semaphore_s {
 	DISPATCH_STRUCT_HEADER(semaphore);
 	long dsema_value;
 	long dsema_orig;
 	size_t dsema_sent_ksignals;
-#if USE_MACH_SEM && USE_POSIX_SEM
-#error "Too many supported semaphore types"
-#elif USE_MACH_SEM
-	semaphore_t dsema_port;
-	semaphore_t dsema_waiter_port;
-#elif USE_POSIX_SEM
-	sem_t dsema_sem;
-#else
-#error "No supported semaphore type"
-#endif
+	dispatch_platform_semaphore_t dsema_handle;
+	dispatch_platform_semaphore_t dsema_waiter_handle;
 	size_t dsema_group_waiters;
 	struct dispatch_sema_notify_s *dsema_notify_head;
 	struct dispatch_sema_notify_s *dsema_notify_tail;
