@@ -39,10 +39,9 @@
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#if HAVE_SYS_CDEFS_H
-#include <sys/cdefs.h>
-#endif
+#if HAVE_PTHREADS
 #include <pthread.h>
+#endif
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 #include <dispatch/dispatch.h>

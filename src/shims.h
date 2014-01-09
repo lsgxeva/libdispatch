@@ -27,6 +27,7 @@
 #ifndef __DISPATCH_OS_SHIMS__
 #define __DISPATCH_OS_SHIMS__
 
+#if HAVE_PTHREADS
 #include <pthread.h>
 #if HAVE_PTHREAD_WORKQUEUES
 #include <pthread_workqueue.h>

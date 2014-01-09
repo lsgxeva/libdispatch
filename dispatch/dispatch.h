@@ -25,12 +25,17 @@
 #include <Availability.h>
 #include <TargetConditionals.h>
 #endif
-#include <sys/cdefs.h>
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+
+#ifndef _WIN32
 #include <unistd.h>
+#include <sys/cdefs.h>
+#endif
+
 #include <fcntl.h>
 
 #ifndef __OSX_AVAILABLE_STARTING
