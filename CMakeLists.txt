@@ -103,7 +103,7 @@ endif ()
 
 check_c_source_compiles("int main() { int i, x = 0; i = __sync_add_and_fetch(&x,1); return x; }" 
   HAVE_ATOMIC_BUILTINS)
-if (NOT HAVE_ATOMIC_BUILTINS)
+if (NOT HAVE_ATOMIC_BUILTINS AND NOT MSVC)
   message(FATAL_ERROR "GCC atomic builtins are required")
 endif ()
 
@@ -114,9 +114,9 @@ endif ()
 DSSearchLibs(clock_gettime LIBRARIES rt)
 
 find_package(Threads REQUIRED)
-find_package(kqueue REQUIRED)
+find_package(kqueue)
 
-find_package(CBlocks REQUIRED COMPONENTS private_headers
+find_package(CBlocks COMPONENTS private_headers
   OPTIONAL_COMPONENTS compiler_support)
 
 if (NOT CBLOCKS_COMPILER_SUPPORT_FOUND)
@@ -224,9 +224,8 @@ DSCheckDecls(POSIX_SPAWN_SETEXEC POSIX_SPAWN_START_SUSPENDED
   INCLUDES sys/spawn.h
 )
 
-#
-# We support both Mach semaphores and POSIX semaphores; if the former are
-# available, prefer them.
+
+# We support Mach semaphores, POSIX semaphores and Win32 semaphores
 
 cmake_push_check_state ()
   set (CMAKE_REQUIRED_LIBRARIES "${CMAKE_THREAD_LIBS_INIT}")
@@ -235,6 +234,8 @@ cmake_pop_check_state ()
 
 if (HAVE_MACH)
   set (USE_MACH_SEM 1)
+elseif (WIN32)
+  set (USE_WIN32_SEM 1)
 elseif (HAVE_SEM_INIT)
   set (USE_POSIX_SEM 1)
 else ()

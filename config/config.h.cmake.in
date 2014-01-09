@@ -130,11 +130,14 @@
 /* Define to tag libdispatch_init as a constructor */
 #cmakedefine01 USE_LIBDISPATCH_INIT_CONSTRUCTOR
 
-/* Define to use Mach semaphores */
-#cmakedefine01 USE_MACH_SEM
-
 /* Define to use Objective-C runtime */
 #cmakedefine01 USE_OBJC
 
+/* Define to use Mach semaphores */
+#cmakedefine01 USE_MACH_SEM
+
 /* Define to use POSIX semaphores */
 #cmakedefine01 USE_POSIX_SEM
+
+/* Define to use POSIX semaphores */
+#cmakedefine01 USE_WIN32_SEM

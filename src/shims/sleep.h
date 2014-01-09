@@ -8,7 +8,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *	   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,14 +19,19 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#ifndef __DISPATCH_SHIMS_PTHREAD_MAIN_NP__
-#define __DISPATCH_SHIMS_PTHREAD_MAIN_NP__
+#ifndef DISPATCH_SHIMS_SLEEP_H_
+#define DISPATCH_SHIMS_SLEEP_H_
 
-#if !HAVE_PTHREAD_MAIN_NP
+#if TARGET_OS_WIN32
+#include <windows.h>
 
-bool _dispatch_is_main_thread();
-bool _dispatch_set_main_thread();
+static inline unsigned int
+sleep(unsigned int seconds)
+{
+	Sleep(seconds * 1000);
+	return 0;
+}
 
 #endif
 
-#endif /* __DISPATCH_SHIMS_PTHREAD_MAIN_NP__ */
+#endif	// DISPATCH_SHIMS_SLEEP_H_

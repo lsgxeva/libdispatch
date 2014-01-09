@@ -876,35 +876,45 @@ DISPATCH_NOTHROW
 void *
 dispatch_get_specific(const void *key);
 
-#if __linux__
+#if TARGET_OS_LINUX || TARGET_OS_WIN32
 /*!
- * @functiongroup Third-party runloop integration
- * This Linux-specific API provides integration of the main queue with
- * a third-party event loop, such as those provided by GLib or Qt. 
+ * @functiongroup External event-loop integration
+ * The following API provides integration of the main queue with a third-party
+ * event loop, such as those provided by GLib, Qt or Win32.
  */
 
+#if TARGET_OS_LINUX
+typedef int dispatch_handle_t;
+#elif TARGET_OS_WIN32
+typedef uintptr_t dispatch_handle_t;
+#endif
+
 /*!
- * @function dispatch_get_main_queue_eventfd_np
+ * @function dispatch_get_main_queue_handle_np
  *
  * @abstract
- * Returns an eventfd file descriptor--see eventfd(2)--that becomes readable
- * whenever there are pending tasks on libdispatch's main queue.
+ * Returns a platform-specific handle that is signalled when there are pending
+ * tasks on libdispatch's main queue.
  *
  * @discussion
- * When this file descriptor becomes readable, you should call eventfd_read(2)
- * on it to acknowledge the wakeup and then call dispatch_main_queue_drain_np()
- * to perform the pending tasks.
+ * On Linux, this is an eventfd file descriptor--see eventfd(2). On Windows,
+ * the returned object is an event HANDLE.
+ * 
+ * When this eventfd or event HANDLE is signal, it's the caller's responsiblity
+ * to acknowledge the signal by calling eventfd_read() (on Linux) or
+ * ResetEvent() (Windows), and then call dispatch_main_queue_drain_np() to
+ * perform pending tasks on libdispatch's main queue.
  *
  * @availability
- * Linux only.
- * 
+ * Linux & Windows only.
+ *
  * @result
- * A file descriptor that can be monitored for reading with select(), epoll(),
- * etc.
+ * Linux: An eventfd file descriptor
+ * Windows: An event HANDLE
  */
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-int
-dispatch_get_main_queue_eventfd_np();
+dispatch_handle_t
+dispatch_get_main_queue_handle_np();
 
 /*!
  * @function dispatch_main_queue_drain_np
@@ -913,7 +923,7 @@ dispatch_get_main_queue_eventfd_np();
  * Executes pending tasks enqueued to libdispatch's main queue.
  *
  * @availability
- * Linux only.
+ * Linux & Windows only.
  * 
  * @discussion
  * Your event loop should invoke this function to execute the pending tasks on

@@ -53,6 +53,8 @@ _dispatch_get_logicalcpu_max()
 #elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
 	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
 	val = ret < 0 ? 1 : ret;
+#elif TARGET_OS_WIN32
+	return GetMaximumProcessorCount(ALL_PROCESSOR_GROUPS);
 #else
 #warning "no supported way to query logical CPU count"
 #endif
@@ -75,6 +77,8 @@ _dispatch_get_physicalcpu_max()
 #elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
 	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
 	val = ret < 0 ? 1 : ret;
+#elif TARGET_OS_WIN32
+	return GetMaximumProcessorCount(ALL_PROCESSOR_GROUPS);
 #else
 #warning "no supported way to query physical CPU count"
 #endif
@@ -97,6 +101,8 @@ _dispatch_get_activecpu()
 #elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
 	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
 	val = ret < 0 ? 1 : ret;
+#elif TARGET_OS_WIN32
+	return GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
 #else
 #warning "no supported way to query active CPU count"
 #endif

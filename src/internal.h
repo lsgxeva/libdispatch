@@ -153,6 +153,7 @@
 #if HAVE_MALLOC_MALLOC_H
 #include <malloc/malloc.h>
 #endif
+#if 0 // XXX
 #include <sys/event.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
@@ -160,6 +161,9 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
+#endif
+
+struct kevent {}; // fixme
 
 #ifdef __BLOCKS__
 #include <Block_private.h>
@@ -186,6 +190,26 @@
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
+#if TARGET_OS_WIN32
+#define _WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
+#if defined(_M_X64) && defined(_MSC_VER)
+#define __x86_64__
+#elif defined(_M_IX86) && defined(_MSC_VER)
+#define __i386__
+#endif
+
+#ifdef _WIN64
+#define __LLP64__
+#endif
+
+#if TARGET_OS_WIN32
+typedef uintptr_t _dispatch_thread_handle_t;
+#else
+typedef pthread_t _dispatch_thread_handle_t;
+#endif
 
 #define DISPATCH_NOINLINE __attribute__((__noinline__))
 #define DISPATCH_USED __attribute__((__used__))
@@ -195,7 +219,23 @@
 #define DISPATCH_ALWAYS_INLINE_NDEBUG
 #else
 #define DISPATCH_ALWAYS_INLINE_NDEBUG __attribute__((__always_inline__))
-#endif
+#endif	// DISPATCH_DEBUG
+
+#elif _MSC_VER
+// xxx fixme
+#define __func__ __FUNCTION__
+#define DISPATCH_NOINLINE //__attribute__((__noinline__))
+#define DISPATCH_USED //__attribute__((__used__))
+#define DISPATCH_UNUSED //__attribute__((__unused__))
+#define DISPATCH_WEAK //__attribute__((__weak__))
+#define DISPATCH_ALIGNAS(x) __declspec(align(x))
+#if DISPATCH_DEBUG
+#define DISPATCH_ALWAYS_INLINE_NDEBUG
+#else
+#define DISPATCH_ALWAYS_INLINE_NDEBUG //__attribute__((__always_inline__))
+#endif	// DISPATCH_DEBUG
+#endif	// __GNUC__
+
 #define DISPATCH_CONCAT(x,y) DISPATCH_CONCAT1(x,y)
 #define DISPATCH_CONCAT1(x,y) x ## y
 
@@ -456,8 +496,6 @@ extern struct _dispatch_hw_config_s {
 /* #includes dependent on internal.h */
 #include "shims.h"
 
-// Linux workarounds
-// FIXME: There's no doubt a cleaner way to do this.
 #if DISPATCH_HAVE_WORKQUEUES
 #ifndef WORKQ_BG_PRIOQUEUE
 #define DISPATCH_NO_BG_PRIORITY 1

@@ -85,7 +85,13 @@ _dispatch_time_nano2mach(int64_t nsec)
 static inline uint64_t
 _dispatch_absolute_time(void)
 {
-#if !HAVE_MACH_ABSOLUTE_TIME
+#if TARGET_OS_WIN32
+	LARGE_INTEGER now;
+	(void)dispatch_assume(QueryPerformanceCounter(&now));
+	return now.QuadPart;
+#elif HAVE_MACH_ABSOLUTE_TIME
+	return mach_absolute_time();
+#else
 	struct timespec ts;
 	int ret;
 
@@ -95,13 +101,11 @@ _dispatch_absolute_time(void)
 	ret = clock_gettime(CLOCK_MONOTONIC, &ts);
 #else
 #error "clock_gettime: no supported absolute time clock"
-#endif
+#endif	// HAVE_DECL_CLOCK_UPTIME
 	(void)dispatch_assume_zero(ret);
 
 	/* XXXRW: Some kind of overflow detection needed? */
 	return (ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec);
-#else
-	return mach_absolute_time();
 #endif
 }
 

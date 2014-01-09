@@ -33,8 +33,7 @@
 		(((x) + (DISPATCH_CACHELINE_SIZE - 1)) & ~(DISPATCH_CACHELINE_SIZE - 1))
 #define ROUND_UP_TO_VECTOR_SIZE(x) \
 		(((x) + 15) & ~15)
-#define DISPATCH_CACHELINE_ALIGN \
-		__attribute__((__aligned__(DISPATCH_CACHELINE_SIZE)))
+#define DISPATCH_CACHELINE_ALIGN DISPATCH_ALIGNAS(DISPATCH_CACHELINE_SIZE)
 
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2)
 
@@ -65,10 +64,79 @@
 #define dispatch_atomic_or(p, v)	__sync_fetch_and_or((p), (v))
 #define dispatch_atomic_and(p, v)	__sync_fetch_and_and((p), (v))
 
-#define dispatch_atomic_inc(p)		dispatch_atomic_add((p), 1)
-#define dispatch_atomic_dec(p)		dispatch_atomic_sub((p), 1)
 // really just a low level abort()
 #define _dispatch_hardware_crash()	__builtin_trap()
+#define _dispatch_return_address __builtin_return_address()
+
+#elif _MSC_VER
+#include <intrin.h>
+
+#define _dispatch_debugger()				__debugbreak()
+
+__declspec(noreturn) static __forceinline void _dispatch_hardware_crash() {
+  __fastfail(FAST_FAIL_FATAL_APP_EXIT);
+}
+
+#define _dispatch_hardware_pause()	YieldProcessor()
+#define _dispatch_return_address(x) _ReturnAddress()
+
+#define dispatch_atomic_maximally_synchronizing_barrier() \
+	do {												  \
+		int result[4];									  \
+		__cpuidex(result, 0, 0);						  \
+	} while (0)
+
+// assume atomic builtins provide barriers
+#define dispatch_atomic_barrier()
+#define dispatch_atomic_acquire_barrier()
+#define dispatch_atomic_release_barrier()
+#define dispatch_atomic_store_barrier()
+
+#define dispatch_atomic_xchg(p, n)										 \
+	(sizeof(*p) == 8													 \
+			 ? (void *)_InterlockedExchange64((volatile long long *)(p), \
+											  (long long)(n))			 \
+			 : (void *)_InterlockedExchange((volatile long *)(p), (long)(n)))
+
+#define dispatch_atomic_cmpxchg(p, o, n)								  \
+	(sizeof(*p) == 8 ? (void *)_InterlockedCompareExchange64(			  \
+							   (volatile long long *)(p), (long long)(n), \
+							   (long long)(o))							  \
+					 : (void *)_InterlockedCompareExchange(				  \
+							   (volatile long *)(p), (long)(n), (long)(o)))
+
+#define dispatch_atomic_add(p, v)					   \
+	(sizeof(*p) == 8								   \
+			 ? (unsigned long long)_InterlockedAdd64(  \
+					   (volatile long long *)(p), (v)) \
+			 : (unsigned long)_InterlockedAdd((volatile long *)(p), (v)))
+
+#define dispatch_atomic_sub(p, v)											\
+	(sizeof(*p) == 8 ? (unsigned long long)_InterlockedAdd64(				\
+							   (volatile long long *)(p), -(long long)(v))	\
+					 : (unsigned long)_InterlockedAdd((volatile long *)(p), \
+													  -(long)(v)))
+
+#define dispatch_atomic_or(p, v)											   \
+	(sizeof(*p) == 8														   \
+			 ? (unsigned long long)_InterlockedOr64((volatile long long *)(p), \
+													(v))					   \
+			 : (unsigned long)_InterlockedOr((volatile long *)(p), (v)))
+
+#define dispatch_atomic_and(p, v)					   \
+	(sizeof(*p) == 8								   \
+			 ? (unsigned long long)_InterlockedAnd64(  \
+					   (volatile long long *)(p), (v)) \
+			 : (unsigned long)_InterlockedAnd((volatile long *)(p), (v)))
+
+
+#else
+#error "Please upgrade to GCC 4.2 or newer."
+#endif
+
+
+#define dispatch_atomic_inc(p)		dispatch_atomic_add((p), 1)
+#define dispatch_atomic_dec(p)		dispatch_atomic_sub((p), 1)
 
 #define dispatch_atomic_cmpxchg2o(p, f, e, n) \
 		dispatch_atomic_cmpxchg(&(p)->f, (e), (n))
@@ -87,11 +155,8 @@
 #define dispatch_atomic_dec2o(p, f) \
 		dispatch_atomic_sub2o((p), f, 1)
 
-#else
-#error "Please upgrade to GCC 4.2 or newer."
-#endif
-
 #if defined(__x86_64__) || defined(__i386__)
+#if __GNUC__
 
 // GCC emits nothing for __sync_synchronize() on x86_64 & i386
 #undef _dispatch_atomic_barrier
@@ -151,7 +216,7 @@
 	"sync" \
 	: : : "memory")
 
-#endif
-
+#endif	// __GNUC__
+#endif	// defined(__x86_64__) || defined(__i386__)
 
 #endif // __DISPATCH_SHIMS_ATOMIC__

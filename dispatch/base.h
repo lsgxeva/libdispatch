@@ -25,6 +25,12 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
+#if defined(__linux__)
+#define TARGET_OS_LINUX 1
+#elif defined(_WIN32)
+#define TARGET_OS_WIN32 1
+#endif
+
 #if __GNUC__
 #define DISPATCH_NORETURN __attribute__((__noreturn__))
 #define DISPATCH_NOTHROW __attribute__((__nothrow__))

@@ -31,7 +31,7 @@
 #pragma mark dispatch_init
 
 #if USE_LIBDISPATCH_INIT_CONSTRUCTOR
-DISPATCH_NOTHROW __attribute__((constructor))
+DISPATCH_NOTHROW //__attribute__((constructor))
 void
 _libdispatch_init(void);
 
@@ -78,15 +78,19 @@ void (*_dispatch_end_NSAutoReleasePool)(void *);
 #endif
 
 #if !DISPATCH_USE_DIRECT_TSD
-pthread_key_t dispatch_queue_key;
-pthread_key_t dispatch_sema4_key;
-pthread_key_t dispatch_cache_key;
-pthread_key_t dispatch_io_key;
-pthread_key_t dispatch_apply_key;
+dispatch_thread_key_t dispatch_queue_key;
+dispatch_thread_key_t dispatch_sema4_key;
+dispatch_thread_key_t dispatch_cache_key;
+dispatch_thread_key_t dispatch_io_key;
+dispatch_thread_key_t dispatch_apply_key;
 #if DISPATCH_PERF_MON
-pthread_key_t dispatch_bcounter_key;
+dispatch_thread_key_t dispatch_bcounter_key;
 #endif
 #endif // !DISPATCH_USE_DIRECT_TSD
+
+#if TARGET_OS_WIN32
+dispatch_thread_key_s _dispatch_tls_keys[DISPATCH_MAX_TLS_SLOTS];
+#endif
 
 struct _dispatch_hw_config_s _dispatch_hw_config;
 bool _dispatch_safe_fork = true;
@@ -281,7 +285,7 @@ _dispatch_build_init(void *context DISPATCH_UNUSED)
 
 #define _dispatch_bug_log(msg, ...) do { \
 	static void *last_seen; \
-	void *ra = __builtin_return_address(0); \
+	void *ra = _dispatch_return_address(0); \
 	if (last_seen != ra) { \
 		last_seen = ra; \
 		_dispatch_log((msg), ##__VA_ARGS__); \
@@ -327,6 +331,73 @@ static FILE *dispatch_logfile;
 static bool dispatch_log_disabled;
 static dispatch_once_t _dispatch_logv_pred;
 
+#if TARGET_OS_WIN32
+static HANDLE _event_log_handle;
+static char _log_header[1024];
+#endif
+
+static FILE *
+_dispatch_logfile_fallback(void)
+{
+	FILE* f = NULL;
+#if !TARGET_OS_WIN32
+	{
+	size_t buf_len = 1024;
+	wchar_t tmpfile_path[buf_len];
+	DWORD dirname_length = GetTempPathW(buf_len, tmpfile_path);
+	if (!(0 < dirname_length && dirname_length < buf_len)) goto out;
+
+	wchar_t *p = tmpfile_path + dirname_length;
+	size_t remaining = buf_len - dirname_length;
+	if (_snwprintf_s(p, remaining, _TRUNCATE, L"\\libdispatch.%d.log",
+					 getpid()) < 0)
+		goto out;
+
+	(void)_wfopen_s(&f, temp_path, L"a");
+	}
+#else
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "/var/tmp/libdispatch.%d.log", getpid());
+	f = fopen(path, "a");
+#endif
+out:
+	return f ? f : stderr;
+}
+
+static int
+_dispatch_vsyslog(int priority, const char* format_string, va_list args)
+{
+#if !TARGET_OS_WIN32
+	return vsyslog(priority, format_string, args);
+#else
+	if (!_event_log_handle) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	unsigned short event_type;
+	switch (priority) {
+	case LOG_ALERT:
+		event_type = EVENTLOG_ERROR_TYPE;
+		break;
+	case LOG_INFO:
+		event_type = EVENTLOG_INFORMATION_TYPE;
+		break;
+	default:
+		event_type = EVENTLOG_WARNING_TYPE;
+	}
+
+	char message[1024];
+	if (snprintf(message, sizeof(message), format_string, args) < 0) return -1;
+
+	const char *message_vec[] = {_log_header, message};
+	if (!ReportEventA(_event_log_handle, event_type, 0, 0, NULL,
+					  countof(message_vec), 0, message_vec, NULL))
+		return -1;
+
+#endif
+}
+
 static void
 _dispatch_logv_init(void *context DISPATCH_UNUSED)
 {
@@ -341,8 +412,10 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			// default
 		} else if (strcmp(e, "NO") == 0) {
 			dispatch_log_disabled = true;
+#if !TARGET_OS_WIN32			
 		} else if (strcmp(e, "syslog") == 0) {
 			log_to_file = false;
+#endif
 		} else if (strcmp(e, "file") == 0) {
 			log_to_file = true;
 		} else if (strcmp(e, "stderr") == 0) {
@@ -352,10 +425,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 	}
 	if (!dispatch_log_disabled) {
 		if (log_to_file && !dispatch_logfile) {
-			char path[PATH_MAX];
-			snprintf(path, sizeof(path), "/var/tmp/libdispatch.%d.log",
-					getpid());
-			dispatch_logfile = fopen(path, "a");
+			dispatch_logfile = _dispatch_logfile_fallback();
 		}
 		if (dispatch_logfile) {
 			struct timeval tv;
@@ -364,6 +434,12 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 					"%ld.%06ld ===\n", getprogname() ?: "", getpid(),
 					tv.tv_sec, (long)tv.tv_usec);
 			fflush(dispatch_logfile);
+#if TARGET_OS_WIN32
+		} else {
+			snprintf(_log_header, sizeof(_log_header), "%s[%u]",
+					 getprogname() ?: "", getpid());
+			_event_log_handle = RegisterEventSourceA(NULL, "libdispatch");
+#endif
 		}
 	}
 }
@@ -392,7 +468,7 @@ _dispatch_logv(const char *msg, va_list ap)
 	if (slowpath(dispatch_logfile)) {
 		return _dispatch_logv_file(msg, ap);
 	}
-	vsyslog(LOG_NOTICE, msg, ap);
+	_dispatch_vsyslog(LOG_NOTICE, msg, ap);
 }
 
 DISPATCH_NOINLINE

@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2009-2010 Mark Heily <mark@heily.com>
+ * Copyright (c) 2009-2010 Mark Heily <mark@heily.com>,
+ *				 2014 Nick Hutchinson <nshutchinson@gmail.com>
  * All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
@@ -23,15 +24,42 @@
 #define __DISPATCH_SHIMS_GETPROGNAME__
 
 #if !HAVE_GETPROGNAME
+
+#if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
+#include <errno.h>
+
 static inline char *
 getprogname(void)
 {
-# if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
 	return program_invocation_short_name;
-# else
-#	error getprogname(3) is not available on this platform
-# endif
 }
+
+#elif TARGET_OS_WIN32
+#include <stdlib.h>
+
+static inline char *
+getprogname(void)
+{
+	char *app_path;
+	if (dispatch_assume_zero(_get_pgmptr(&app_path))) {
+		return NULL;
+	}
+
+	char *last_slash = NULL;
+	for (char *p = app_path; *p; ++p) {
+		switch (*p) {
+		case '/':
+		case '\\':
+			last_slash = p;
+		}
+	}
+
+	return last_slash ? last_slash + 1 : app_path;
+}
+#else
+#error getprogname(3) is not available on this platform
+#endif
+
 #endif /* HAVE_GETPROGNAME */
 
 #endif /* __DISPATCH_SHIMS_GETPROGNAME__ */

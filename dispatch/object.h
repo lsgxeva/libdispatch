@@ -104,6 +104,13 @@ union dispatch_object_t {
 #define DISPATCH_GLOBAL_OBJECT(type, object) (&(object))
 #define DISPATCH_RETURNS_RETAINED
 #else /* Plain C */
+
+#if __GNUC__
+#define DISPATCH_TRANSPARENT_UNION __attribute__((__transparent_union__))
+#else
+#define DISPATCH_TRANSPARENT_UNION
+#endif
+
 typedef union {
 	struct _os_object_s *_os_obj;
 	struct dispatch_object_s *_do;
@@ -118,7 +125,7 @@ typedef union {
 	struct dispatch_io_s *_dchannel;
 	struct dispatch_operation_s *_doperation;
 	struct dispatch_disk_s *_ddisk;
-} dispatch_object_t __attribute__((__transparent_union__));
+} dispatch_object_t DISPATCH_TRANSPARENT_UNION;
 /*! @parseOnly */
 #define DISPATCH_DECL(name) typedef struct name##_s *name##_t
 /*! @parseOnly */

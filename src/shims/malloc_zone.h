@@ -25,11 +25,59 @@
 
 #include <stdlib.h>
 
+#if TARGET_OS_WIN32
+typedef HANDLE malloc_zone_t;
+
+static inline malloc_zone_t *
+malloc_create_zone(size_t start_size, unsigned flags)
+{
+	return HeapCreate(0, start_size, 0);
+}
+
+static inline void
+malloc_destroy_zone(malloc_zone_t *zone)
+{
+	HeapDestroy(zone);
+}
+
+static inline void *
+malloc_zone_malloc(malloc_zone_t *zone, size_t size)
+{
+	return HeapAlloc(zone, 0, size);
+}
+
+static inline void *
+malloc_zone_calloc(malloc_zone_t *zone, size_t num_items, size_t size)
+{
+	if (num_items && SIZE_MAX / num_items < size) return NULL;
+	return HeapAlloc(zone, HEAP_ZERO_MEMORY, num_items*size);
+}
+
+static inline void *
+malloc_zone_realloc(malloc_zone_t *zone, void *ptr, size_t size)
+{
+	if (!ptr) return malloc_zone_malloc(zone, size);
+	return return HeapReAlloc(zone, 0, ptr, size);
+}
+
+static inline void
+malloc_zone_free(malloc_zone_t *zone, void *ptr)
+{
+	if (!ptr) return;
+	HeapFree(zone, 0, ptr);
+}
+
+static inline void
+malloc_set_zone_name(malloc_zone_t *zone, const char *name)
+{
+	/* No-op. */
+}
+
+#elif !HAVE_MALLOC_CREATE_ZONE
 /*
  * Implement malloc zones as a simple wrapper around malloc(3) on systems
  * that don't support them.
  */
-#if !HAVE_MALLOC_CREATE_ZONE
 typedef void * malloc_zone_t;
 
 static inline malloc_zone_t *
@@ -43,20 +91,6 @@ static inline void
 malloc_destroy_zone(malloc_zone_t *zone)
 {
 
-}
-
-static inline malloc_zone_t *
-malloc_default_zone(void)
-{
-
-	return ((malloc_zone_t *)(-1));
-}
-
-static inline malloc_zone_t *
-malloc_zone_from_ptr(const void *ptr)
-{
-
-	return ((malloc_zone_t *)(-1));
 }
 
 static inline void *
@@ -90,7 +124,6 @@ malloc_zone_free(malloc_zone_t *zone, void *ptr)
 static inline void
 malloc_set_zone_name(malloc_zone_t *zone, const char *name)
 {
-
 	/* No-op. */
 }
 #endif

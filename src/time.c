@@ -23,12 +23,28 @@
 uint64_t
 _dispatch_get_nanoseconds(void)
 {
+#if !TARGET_OS_WIN32
 	struct timeval now;
 	int r = gettimeofday(&now, NULL);
 	dispatch_assert_zero(r);
 	dispatch_assert(sizeof(NSEC_PER_SEC) == 8);
 	dispatch_assert(sizeof(NSEC_PER_USEC) == 8);
 	return now.tv_sec * NSEC_PER_SEC + now.tv_usec * NSEC_PER_USEC;
+#else
+  const uint64_t nanos_per_filetime_interval = 100;
+  const uint64_t filetime_intervals_per_sec =
+	NSEC_PER_SEC / nanos_per_filetime_interval;
+  // Intervals between Jan 1 1601 and Jan 1 1970
+  const uint64_t unix2win_epoch_delta =
+	11644473600ull * filetime_intervals_per_sec;
+
+  FILETIME primitive_filetime;
+  GetSystemTimeAsFileTime(&primitive_filetime);
+
+  uint64_t filetime = (uint64_t)primitive_filetime.dwHighDateTime << 32;
+  filetime |= primitive_filetime.dwLowDateTime;
+  return (filetime - unix2win_epoch_delta) * nanos_per_filetime_interval;
+#endif
 }
 
 #if !(defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME)
@@ -37,12 +53,17 @@ DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data;
 void
 _dispatch_get_host_time_init(void *context DISPATCH_UNUSED)
 {
+#if HAVE_MACH_ABSOLUTE_TIME
 	mach_timebase_info_data_t tbi;
 	(void)dispatch_assume_zero(mach_timebase_info(&tbi));
 	_dispatch_host_time_data.frac = tbi.numer;
 	_dispatch_host_time_data.frac /= tbi.denom;
 	_dispatch_host_time_data.ratio_1_to_1 = (tbi.numer == tbi.denom);
-}
+#elif TARGET_OS_WIN32
+  LARGE_INTEGER freq;
+  (void)dispatch_assume(QueryPerformanceFrequency(&freq));
+  _dispatch_host_time_data.frac = (long double) NSEC_PER_SEC / (long double) freq.QuadPart;
+  _dispatch_host_time_data.ratio_1_to_1 = (freq.QuadPart == NSEC_PER_SEC);
 #endif
 
 dispatch_time_t

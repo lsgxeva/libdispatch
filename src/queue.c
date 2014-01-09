@@ -45,19 +45,21 @@
 #endif
 
 #if DISPATCH_HAVE_WORKQUEUES
-#define DISPATCH_WORKQ_OPTION_OVERCOMMIT WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
-#define DISPATCH_WORKQ_BG_PRIOQUEUE WORKQ_BG_PRIOQUEUE
-#define DISPATCH_WORKQ_LOW_PRIOQUEUE WORKQ_LOW_PRIOQUEUE
-#define DISPATCH_WORKQ_DEFAULT_PRIOQUEUE WORKQ_DEFAULT_PRIOQUEUE
-#define DISPATCH_WORKQ_HIGH_PRIOQUEUE WORKQ_HIGH_PRIOQUEUE
-
-#elif TARGET_OS_WIN32
+#if TARGET_OS_WIN32
 #define DISPATCH_WORKQ_OPTION_OVERCOMMIT 0x1u
 #define DISPATCH_WORKQ_BG_PRIOQUEUE THREAD_PRIORITY_LOWEST
 #define DISPATCH_WORKQ_LOW_PRIOQUEUE THREAD_PRIORITY_BELOW_NORMAL
 #define DISPATCH_WORKQ_DEFAULT_PRIOQUEUE THREAD_PRIORITY_NORMAL
 #define DISPATCH_WORKQ_HIGH_PRIOQUEUE THREAD_PRIORITY_HIGHEST
-#endif
+
+#else
+#define DISPATCH_WORKQ_OPTION_OVERCOMMIT WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
+#define DISPATCH_WORKQ_BG_PRIOQUEUE WORKQ_BG_PRIOQUEUE
+#define DISPATCH_WORKQ_LOW_PRIOQUEUE WORKQ_LOW_PRIOQUEUE
+#define DISPATCH_WORKQ_DEFAULT_PRIOQUEUE WORKQ_DEFAULT_PRIOQUEUE
+#define DISPATCH_WORKQ_HIGH_PRIOQUEUE WORKQ_HIGH_PRIOQUEUE
+#endif	// TARGET_OS_WIN32
+#endif	// DISPATCH_HAVE_WORKQUEUES
 
 static void _dispatch_cache_cleanup(void *value);
 static void _dispatch_async_f_redirect(dispatch_queue_t dq,
@@ -90,9 +92,9 @@ static void _dispatch_main_queue_drain(void);
 #endif
 
 #if DISPATCH_COCOA_COMPAT
-static unsigned int _dispatch_worker_threads;
+static unsigned int _cocoa_dispatch_worker_threads;
 static dispatch_once_t _dispatch_main_q_port_pred;
-static mach_port_t main_q_port;
+static mach_port_t _main_q_port;
 
 static void _dispatch_main_q_port_init(void *ctxt);
 #endif
@@ -162,17 +164,17 @@ struct dispatch_root_queue_context_s {
 	union {
 		struct {
 			unsigned int volatile dgq_pending;
-#if TARGET_OS_WIN32 || DISPATCH_HAVE_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 			int dgq_wq_priority, dgq_wq_options;
+#endif
 #if TARGET_OS_WIN32
-			TP_WORK* dgq_work_item;
 			TP_CALLBACK_ENVIRON* dgq_callback_environ;
+			TP_WORK* dgq_work_item;
 #endif
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 			pthread_workqueue_t dgq_kworkqueue;
 #endif
-#endif	// TARGET_OS_WIN32 || DISPATCH_HAVE_WORKQUEUES
-#if DISPATCH_ENABLE_THREAD_POOL
+#if DISPATCH_ENABLE_SIMPLE_THREAD_POOL
 			dispatch_semaphore_t dgq_thread_mediator;
 			uint32_t dgq_thread_pool_size;
 #endif
@@ -184,8 +186,8 @@ struct dispatch_root_queue_context_s {
 DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
-		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
+#if DISPATCH_HAVE_WORKQUEUES
+	.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
@@ -195,7 +197,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -206,7 +208,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -217,7 +219,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -228,7 +230,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -239,7 +241,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -250,7 +252,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -261,7 +263,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY] = {{{
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -431,7 +433,8 @@ dispatch_get_global_queue(long priority, unsigned long flags)
 dispatch_queue_t
 dispatch_get_current_queue(void)
 {
-	return _dispatch_queue_get_current() ?: _dispatch_get_root_queue(0, true);
+	dispatch_queue_t q = _dispatch_queue_get_current();
+	return q ? q : _dispatch_get_root_queue(0, true);
 }
 
 #pragma mark -
@@ -449,7 +452,7 @@ static inline bool
 _dispatch_root_queues_init_workq(void)
 {
 	bool result = false;
-#if DISPATCH_HAVE_WORKQUEUES || TARGET_OS_WIN32
+#if DISPATCH_HAVE_WORKQUEUES
 	bool disable_wq = false;
 #if DISPATCH_USE_PTHREAD_POOL
 	disable_wq = slowpath(getenv("LIBDISPATCH_DISABLE_KWQ"));
@@ -469,22 +472,21 @@ _dispatch_root_queues_init_workq(void)
 		_dispatch_tp_pool = dispatch_assume(CreateThreadpool(NULL));
 		_dispatch_tp_pool_overcommit = dispatch_assume(CreateThreadpool(NULL));
 
-		SetThreadpoolThreadMaximum(_dispatch_tp_pool, DISPATCH_WIN32_MAX_THREADS);
+		SetThreadpoolThreadMaximum(_dispatch_tp_pool,
+								   DISPATCH_WIN32_MAX_THREADS);
 		SetThreadpoolThreadMaximum(_dispatch_tp_pool_overcommit,
 								   DISPATCH_WIN32_MAX_OVERCOMMIT_THREADS);
 
 		for (int i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
-			struct dispatch_queue_s *dq = &_dispatch_root_queue[i];
-			struct dispatch_root_queue_context_s *qc =
-				(struct dispatch_root_queue_context_s *)dq->do_ctxt[i];
+			struct dispatch_queue_s *dq = &_dispatch_root_queues[i];
+			struct dispatch_root_queue_context_s *qc = dq->do_ctxt;
 
-			qc->dgq_callback_environ =
-				(TP_CALLBACK_ENVIRON *)malloc(sizeof(*qc->dgq_callback_environ));
+			qc->dgq_callback_environ = malloc(sizeof(*qc->dgq_callback_environ));
 			(void)dispatch_assume(qc->dgq_callback_environ);
-			InitializeThreadpoolEnvironment(&qc->dgq_callback_environ);
-			SetThreadpoolCallbackRunsLong(&qc->dgq_callback_environ);
+			InitializeThreadpoolEnvironment(qc->dgq_callback_environ);
+			SetThreadpoolCallbackRunsLong(qc->dgq_callback_environ);
 			SetThreadpoolCallbackPool(
-				&qc->dgq_callback_environ,
+				qc->dgq_callback_environ,
 				(qc->dgq_wq_options & DISPATCH_WORKQ_OPTION_OVERCOMMIT)
 					? _dispatch_tp_pool_overcommit
 					: _dispatch_tp_pool);
@@ -534,7 +536,8 @@ _dispatch_root_queues_init_workq(void)
 		}
 #endif
 	}
-#endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
+#endif	// DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK ||
+		// DISPATCH_USE_PTHREAD_POOL
 #endif // DISPATCH_HAVE_WORKQUEUES
 	return result;
 }
@@ -556,14 +559,15 @@ _dispatch_root_queues_init_thread_pool(void)
 #endif
 #if USE_MACH_SEM
 		// override the default FIFO behavior for the pool semaphores
-		kern_return_t kr = semaphore_create(mach_task_self(),
-				&_dispatch_thread_mediator[i].dsema_port, SYNC_POLICY_LIFO, 0);
+		kern_return_t kr = semaphore_create(
+				mach_task_self(), &_dispatch_thread_mediator[i].dsema_handle,
+				SYNC_POLICY_LIFO, 0);
 		DISPATCH_VERIFY_MIG(kr);
 		(void)dispatch_assume_zero(kr);
-		(void)dispatch_assume(_dispatch_thread_mediator[i].dsema_port);
+		(void)dispatch_assume(_dispatch_thread_mediator[i].dsema_handle);
 #elif USE_POSIX_SEM
 		/* XXXRW: POSIX semaphores don't support LIFO? */
-		int ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
+		int ret = sem_init(&_dispatch_thread_mediator[i].dsema_handle, 0, 0);
 		(void)dispatch_assume_zero(ret);
 #endif
 	}
@@ -697,7 +701,7 @@ dispatch_queue_create(const char *label, dispatch_queue_attr_t attr)
 			DISPATCH_QUEUE_CACHELINE_PAD + label_len + 1);
 
 	_dispatch_queue_init(dq);
-	strcpy(dq->dq_label, label);
+	strlcpy(dq->dq_label, label, label_len+1);
 
 	if (fastpath(!attr)) {
 		return dq;
@@ -1570,7 +1574,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 
 	struct dispatch_barrier_sync_slow2_s dbss2 = {
 		.dbss2_dq = dq,
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 		.dbss2_func = func,
 		.dbss2_ctxt = ctxt,
 #endif
@@ -1587,7 +1591,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 	_dispatch_thread_semaphore_wait(dbss2.dbss2_sema);
 	_dispatch_put_thread_semaphore(dbss2.dbss2_sema);
 
-#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
 	// Main queue bound to main thread
 	if (dbss2.dbss2_func == NULL) {
 		return;
@@ -2048,6 +2052,8 @@ _dispatch_queue_wakeup_main(void)
 #elif TARGET_OS_WIN32
 		(void)dispatch_assume(SetEvent((HANDLE)_main_q_handle));
 #endif
+	}
+#endif	// DISPATCH_COCOA_COMPAT
 	return NULL;
 }
 #endif	// DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX || TARGET_OS_WIN32
@@ -2071,7 +2077,7 @@ _dispatch_queue_wakeup_global_slow(dispatch_queue_t dq, unsigned int n)
 #endif	// TARGET_OS_WIN32
 
 #if DISPATCH_HAVE_WORKQUEUES
-#if DISPATCH_USE_PTHREAD_POOL
+#if DISPATCH_USE_PTHREAD_POOL 
 	if (qc->dgq_kworkqueue != (void*)(~0ul))
 #endif
 	{
@@ -2466,12 +2472,12 @@ _dispatch_worker_thread4(dispatch_queue_t dq)
 	_dispatch_thread_setspecific(dispatch_queue_key, dq);
 
 #if DISPATCH_COCOA_COMPAT
-	(void)dispatch_atomic_inc(&_dispatch_worker_threads);
+	(void)dispatch_atomic_inc(&_cocoa_dispatch_worker_threads);
 	// ensure that high-level memory management techniques do not leak/crash
 	if (dispatch_begin_thread_4GC) {
 		dispatch_begin_thread_4GC();
 	}
-	void *pool = _dispatch_autorelease_pool_push();
+	void *pool = _dispatch_autorelease_pool_push(void);
 #endif // DISPATCH_COCOA_COMPAT
 
 #if DISPATCH_PERF_MON
@@ -2489,7 +2495,7 @@ _dispatch_worker_thread4(dispatch_queue_t dq)
 	if (dispatch_end_thread_4GC) {
 		dispatch_end_thread_4GC();
 	}
-	if (!dispatch_atomic_dec(&_dispatch_worker_threads) &&
+	if (!dispatch_atomic_dec(&_cocoa_dispatch_worker_threads) &&
 			dispatch_no_worker_threads_4GC) {
 		dispatch_no_worker_threads_4GC();
 	}
@@ -2520,7 +2526,7 @@ _dispatch_worker_thread5(TP_CALLBACK_INSTANCE *instance DISPATCH_UNUSED,
 {
 	dispatch_queue_t dq = (dispatch_queue_t)context;
 	struct dispatch_root_queue_context_s *qc =
-			(struct dispatch_root_queue_context_s *)dq->do_ctxt;
+		(struct dispatch_root_queue_context_s *)dq->do_ctxt;
 
 	  (void)dispatch_atomic_dec2o(qc, dgq_pending);
 
@@ -2529,14 +2535,15 @@ _dispatch_worker_thread5(TP_CALLBACK_INSTANCE *instance DISPATCH_UNUSED,
 	dispatch_assume(SetThreadPriority(GetCurrentThread(), qc->dgq_wq_priority));
 
 	bool do_bg_mode = qc->dgq_wq_priority == DISPATCH_WORKQ_BG_PRIOQUEUE;
-	if (do_bg_mode && !SetThreadPriority(THREAD_MODE_BACKGROUND_BEGIN)) {
+	if (do_bg_mode && !SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN)) {
 		dispatch_assume(GetLastError() == ERROR_THREAD_MODE_ALREADY_BACKGROUND);
 		do_bg_mode = false;
 	}
 
 	_dispatch_worker_thread4(dq);
 
-	dispatch_assume(!do_bg_mode || SetThreadPriority(THREAD_MODE_BACKGROUND_END));
+	dispatch_assume(!do_bg_mode ||
+					SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END));
 	dispatch_assume(SetThreadPriority(GetCurrentThread(), old_priority));
 
 	_dispatch_call_tsd_destructors();
@@ -2555,6 +2562,7 @@ _dispatch_worker_thread2(int priority, int options,
 	dispatch_queue_t dq = _dispatch_wq2root_queues[priority][options];
 	struct dispatch_root_queue_context_s *qc = dq->do_ctxt;
 
+	(void)dispatch_atomic_dec2o(qc, dgq_pending);
 	_dispatch_worker_thread4(dq);
 }
 #endif
@@ -2563,6 +2571,7 @@ _dispatch_worker_thread2(int priority, int options,
 // 6618342 Contact the team that owns the Instrument DTrace probe before
 //         renaming this symbol
 static void *
+#endif
 _dispatch_worker_thread(void *context)
 {
 	dispatch_queue_t dq = context;
@@ -2596,6 +2605,7 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 	int r;
 
 	/* Workaround: 6269619 Not all signals can be delivered on any thread */
+	/* XXX what about Linux? Same deal? */
 
 	r = sigdelset(set, SIGILL);
 	(void)dispatch_assume_zero(r);
@@ -2618,7 +2628,7 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 
 	return pthread_sigmask(how, set, oset);
 }
-#endif
+#endif	// DISPATCH_USE_PTHREAD_POOL
 
 #pragma mark -
 #pragma mark dispatch_main_queue
@@ -2646,10 +2656,10 @@ _dispatch_main_q_port_init(void *ctxt DISPATCH_UNUSED)
 
 	_dispatch_safe_fork = false;
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE,
-			&main_q_port);
+			&_main_q_port);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
-	kr = mach_port_insert_right(mach_task_self(), main_q_port, main_q_port,
+	kr = mach_port_insert_right(mach_task_self(), _main_q_port, _main_q_port,
 			MACH_MSG_TYPE_MAKE_SEND);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
@@ -2662,7 +2672,7 @@ _dispatch_get_main_queue_port_4CF(void)
 {
 	dispatch_once_f(&_dispatch_main_q_port_pred, NULL,
 			_dispatch_main_q_port_init);
-	return main_q_port;
+	return _main_q_port;
 }
 
 void
@@ -2676,7 +2686,7 @@ _dispatch_main_queue_callback_4CF(mach_msg_header_t *msg DISPATCH_UNUSED)
 	_dispatch_queue_set_mainq_drain_state(false);
 }
 
-#endif
+#endif	// DISPATCH_COCOA_COMPAT
 
 #if TARGET_OS_LINUX || TARGET_OS_WIN32
 dispatch_handle_t
@@ -2690,9 +2700,9 @@ dispatch_get_main_queue_handle_np()
 void
 dispatch_main_queue_drain_np()
 {
-	if (!pthread_main_np()) {
-		DISPATCH_CLIENT_CRASH("dispatch_main_queue_drain_np() must be called on "
-							  "the main thread");
+	if (!_dispatch_set_main_thread()) {
+		DISPATCH_CLIENT_CRASH(
+			"dispatch_main_queue_drain_np() must be called on the main thread");
 	}
 
 	if (main_q_is_draining) {
@@ -2747,7 +2757,7 @@ _dispatch_sigsuspend(void)
 
 #if DISPATCH_COCOA_COMPAT
 	// Do not count the signal handling thread as a worker thread
-	(void)dispatch_atomic_dec(&_dispatch_worker_threads);
+	(void)dispatch_atomic_dec(&_cocoa_dispatch_worker_threads);
 #endif
 	for (;;) {
 		sigsuspend(&mask);
@@ -2762,6 +2772,7 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 	_dispatch_clear_stack(0);
 	_dispatch_sigsuspend();
 }
+#endif	// !TARGET_OS_WIN32
 
 DISPATCH_NOINLINE
 static void
@@ -2829,6 +2840,8 @@ _dispatch_queue_cleanup(void *ctxt)
 #pragma mark -
 #pragma mark dispatch_manager_queue
 
+#if 0 // not yet
+
 static unsigned int _dispatch_select_workaround;
 static fd_set _dispatch_rfds;
 static fd_set _dispatch_wfds;
@@ -2841,10 +2854,10 @@ static void
 _dispatch_get_kq_init(void *context DISPATCH_UNUSED)
 {
 	static const struct kevent kev = {
-		.ident = 1,
-		.filter = EVFILT_USER,
-		.flags = EV_ADD|EV_CLEAR,
-	};
+	struct kevent kev = {0};
+	kev.ident = 1;
+	kev.filter = EVFILT_USER;
+	kev.flags = EV_ADD | EV_CLEAR;
 
 	_dispatch_safe_fork = false;
 	_dispatch_kq = kqueue();
@@ -2852,7 +2865,7 @@ _dispatch_get_kq_init(void *context DISPATCH_UNUSED)
 		DISPATCH_CLIENT_CRASH("kqueue() create failed: "
 				"probably out of file descriptors");
 	} else if (dispatch_assume(_dispatch_kq < FD_SETSIZE)) {
-	// in case we fall back to select()
+		// in case we fall back to select()
 		FD_SET(_dispatch_kq, &_dispatch_rfds);
 	}
 
@@ -3053,7 +3066,7 @@ _dispatch_mgr_invoke(void)
 	_dispatch_thread_setspecific(dispatch_queue_key, &_dispatch_mgr_q);
 #if DISPATCH_COCOA_COMPAT
 	// Do not count the manager thread as a worker thread
-	(void)dispatch_atomic_dec(&_dispatch_worker_threads);
+	(void)dispatch_atomic_dec(&_cocoa_dispatch_worker_threads);
 #endif
 	_dispatch_malloc_vm_pressure_setup();
 
@@ -3172,3 +3185,5 @@ _dispatch_mgr_thread(dispatch_queue_t dq DISPATCH_UNUSED)
 	_dispatch_clear_stack(2048);
 	_dispatch_mgr_invoke();
 }
+
+#endif
