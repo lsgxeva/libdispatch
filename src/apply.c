@@ -26,7 +26,7 @@ _dispatch_apply_invoke(void *ctxt)
 {
 	dispatch_apply_t da = ctxt;
 	size_t const iter = da->da_iterations;
-	typeof(da->da_func) const func = da->da_func;
+	void *const func = da->da_func;
 	void *const da_ctxt = da->da_ctxt;
 	size_t idx, done = 0;
 
@@ -121,7 +121,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 	_dispatch_thread_semaphore_t sema = _dispatch_get_thread_semaphore();
 	da->da_sema = sema;
 
-	_dispatch_queue_push_list(dq, head, tail, continuation_cnt);
+	_dispatch_queue_push_list(dq, DOBJ(head), DOBJ(tail),
+							  continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply2(da);
 	_dispatch_workitem_inc();
@@ -173,7 +174,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 		return;
 	}
 
-	dispatch_apply_t da = (typeof(da))_dispatch_continuation_alloc();
+	dispatch_apply_t da = (dispatch_apply_t)_dispatch_continuation_alloc();
 
 	da->da_func = func;
 	da->da_ctxt = ctxt;

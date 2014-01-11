@@ -124,7 +124,8 @@ if (MSVC)
   set (cflags
     -W4
     #disabled warnings:
-    -wd4068  #unknown pragma
+    -wd4068  # unknown pragma
+    -wd4204  # non-const aggregate initializer
     -wd4201  # anonymous struct/union
     -wd4100  # unreferenced formal parameter
     -wd4127  # conditional is constant

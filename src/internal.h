@@ -188,7 +188,9 @@
 #include <netinet/in.h>
 #endif
 
-struct kevent {}; // fixme
+struct kevent {
+  int dummy;
+}; // fixme
 
 #ifdef __BLOCKS__
 #include <Block_private.h>
@@ -236,6 +238,13 @@ struct kevent {}; // fixme
 typedef uintptr_t _dispatch_thread_handle_t;
 #else
 typedef pthread_t _dispatch_thread_handle_t;
+#endif
+
+#if TARGET_OS_WIN32
+// Windows doesn't support transparent_union, so needs explicit upcasts
+#define DOBJ(x) (dispatch_object_t){(void*)(x)}
+#else
+#define DOBJ(x) (x)
 #endif
 
 #if __GNUC__
@@ -322,9 +331,9 @@ void _dispatch_log(const char *msg, ...);
 		_dispatch_eval_if_constexpr(e, { \
 			char __compile_time_assert__[(bool)(e) ? -1 : 1]; \
 		}) else { \
-			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
+	  intptr_t _e = (intptr_t) fastpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && !_e) { \
-				_dispatch_abort(__LINE__, (long)_e); \
+				_dispatch_abort(__LINE__, _e); \
 			} \
 		} \
 	} while (0)
@@ -337,9 +346,9 @@ void _dispatch_log(const char *msg, ...);
 		_dispatch_eval_if_constexpr(e, { \
 			char __compile_time_assert__[(bool)(e) ? -1 : 1]; \
 		}) else { \
-			auto _e = slowpath(e); /* always eval 'e' */ \
+	  intptr_t _e = (intptr_t) slowpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && _e) { \
-				_dispatch_abort(__LINE__, (long)_e); \
+				_dispatch_abort(__LINE__, _e); \
 			} \
 		} \
 	} while (0)
@@ -351,9 +360,9 @@ void _dispatch_log(const char *msg, ...);
 		_dispatch_eval_if_constexpr(e, { \
 			char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
 		}) else { \
-			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
+	  intptr_t _e = (intptr_t)fastpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && !_e) { \
-				_dispatch_log("%s() 0x%lx: " msg, __func__, (long)_e, ##__VA_ARGS__); \
+				_dispatch_log("%s() 0x%lx: " msg, __func__, _e, ##__VA_ARGS__); \
 				abort(); \
 			} \
 		} \

@@ -47,7 +47,7 @@ _dispatch_get_nanoseconds(void)
 #endif
 }
 
-#if !(defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME)
+#if !HAVE_MACH_ABSOLUTE_TIME || !(defined(__i386__) || defined(__x86_64__))
 DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data;
 
 void
@@ -65,6 +65,9 @@ _dispatch_get_host_time_init(void *context DISPATCH_UNUSED)
   _dispatch_host_time_data.frac = (long double) NSEC_PER_SEC / (long double) freq.QuadPart;
   _dispatch_host_time_data.ratio_1_to_1 = (freq.QuadPart == NSEC_PER_SEC);
 #endif
+}
+#endif	// !HAVE_MACH_ABSOLUTE_TIME || !(defined(__i386__) || \
+		// defined(__x86_64__))
 
 dispatch_time_t
 dispatch_time(dispatch_time_t inval, int64_t delta)
@@ -82,7 +85,7 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 		}
 		if ((int64_t)(inval -= delta) >= -1) {
 			// -1 is special == DISPATCH_TIME_FOREVER == forever
-			return -2; // underflow
+			return (dispatch_time_t)-2; // underflow
 		}
 		return inval;
 	}

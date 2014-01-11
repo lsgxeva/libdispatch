@@ -48,8 +48,7 @@ typedef struct dispatch_thread_key_s {
 
 #define DISPATCH_MAX_TLS_SLOTS 6
 
-extern 
-dispatch_thread_key_s _dispatch_tls_keys[DISPATCH_MAX_TLS_SLOTS];
+extern struct dispatch_thread_key_s _dispatch_tls_keys[DISPATCH_MAX_TLS_SLOTS];
 
 #endif
 
@@ -85,7 +84,7 @@ _dispatch_thread_key_create(dispatch_thread_key_t *k, void (*d)(void *))
   // This isn't thread-safe, unlike pthread_key_create, but as we create our tls
   // keys once at library init time, we don't care.
   DWORD tls_index = TlsAlloc();
-  dispatch_thread_key_s new_key = {tls_index + 1, d};
+  struct dispatch_thread_key_s new_key = {tls_index + 1, d};
   if (tls_index == TLS_OUT_OF_INDEXES) goto ohno;
 
   for (size_t i = 0; i < DISPATCH_MAX_TLS_SLOTS; i++) {

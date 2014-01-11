@@ -44,7 +44,7 @@
 	dispatch_function_t dc_func; \
 	void *dc_ctxt; \
 	void *dc_data; \
-	void *dc_other;
+	void *dc_other
 
 #define DISPATCH_OBJ_ASYNC_BIT		0x1
 #define DISPATCH_OBJ_BARRIER_BIT	0x2
@@ -91,7 +91,7 @@ struct dispatch_queue_attr_s {
 	struct dispatch_object_s *volatile dq_items_tail; \
 	struct dispatch_object_s *volatile dq_items_head; \
 	unsigned long dq_serialnum; \
-	dispatch_queue_t dq_specific_q;
+	dispatch_queue_t dq_specific_q
 
 DISPATCH_CLASS_DECL(queue);
 struct dispatch_queue_s {
@@ -169,7 +169,7 @@ _dispatch_queue_push_list2(dispatch_queue_t dq, struct dispatch_object_s *head,
 		// or _dispatch_atfork_child
 		prev->do_next = head;
 	}
-	return prev;
+	return !!prev;
 }
 
 DISPATCH_ALWAYS_INLINE

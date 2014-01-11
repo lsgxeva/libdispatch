@@ -182,7 +182,7 @@ _dispatch_dealloc(dispatch_object_t dou)
 	if (func && ctxt) {
 		dispatch_async_f(tq, ctxt, func);
 	}
-	_dispatch_release(tq);
+	_dispatch_release(DOBJ(tq));
 }
 
 void
@@ -196,7 +196,7 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 	if (dx_type(dou._do) == DISPATCH_SOURCE_KEVENT_TYPE) {
 		_dispatch_source_xref_dispose(dou._ds);
 	}
-	return _dispatch_release(dou._os_obj);
+	return _dispatch_release(dou);
 #endif
 }
 
@@ -240,16 +240,16 @@ dispatch_suspend(dispatch_object_t dou)
 	// suspension.
 	(void)dispatch_atomic_add2o(dou._do, do_suspend_cnt,
 			DISPATCH_OBJECT_SUSPEND_INTERVAL);
-	_dispatch_retain(dou._do);
+	_dispatch_retain(dou);
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_resume_slow(dispatch_object_t dou)
 {
-	_dispatch_wakeup(dou._do);
+	_dispatch_wakeup(dou);
 	// Balancing the retain() done in suspend() for rdar://8181908
-	_dispatch_release(dou._do);
+	_dispatch_release(dou);
 }
 
 void
@@ -270,7 +270,7 @@ dispatch_resume(dispatch_object_t dou)
 			DISPATCH_OBJECT_SUSPEND_INTERVAL;
 	if (fastpath(suspend_cnt > DISPATCH_OBJECT_SUSPEND_INTERVAL)) {
 		// Balancing the retain() done in suspend() for rdar://8181908
-		return _dispatch_release(dou._do);
+		return _dispatch_release(dou);
 	}
 	if (fastpath(suspend_cnt == DISPATCH_OBJECT_SUSPEND_INTERVAL)) {
 		return _dispatch_resume_slow(dou);

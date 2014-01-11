@@ -89,7 +89,7 @@ dispatch_thread_key_t dispatch_bcounter_key;
 #endif // !DISPATCH_USE_DIRECT_TSD
 
 #if TARGET_OS_WIN32
-dispatch_thread_key_s _dispatch_tls_keys[DISPATCH_MAX_TLS_SLOTS];
+struct dispatch_thread_key_s _dispatch_tls_keys[DISPATCH_MAX_TLS_SLOTS];
 #endif
 
 struct _dispatch_hw_config_s _dispatch_hw_config;
@@ -147,15 +147,15 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent = {
 DISPATCH_VTABLE_INSTANCE(semaphore,
 	.do_type = DISPATCH_SEMAPHORE_TYPE,
 	.do_kind = "semaphore",
-	.do_dispose = _dispatch_semaphore_dispose,
-	.do_debug = _dispatch_semaphore_debug,
+	.do_dispose = (void*)_dispatch_semaphore_dispose,
+	.do_debug = (void*) _dispatch_semaphore_debug,
 );
 
 DISPATCH_VTABLE_INSTANCE(group,
 	.do_type = DISPATCH_GROUP_TYPE,
 	.do_kind = "group",
-	.do_dispose = _dispatch_semaphore_dispose,
-	.do_debug = _dispatch_semaphore_debug,
+	.do_dispose = (void*) _dispatch_semaphore_dispose,
+	.do_debug = (void*) _dispatch_semaphore_debug,
 );
 
 DISPATCH_VTABLE_INSTANCE(queue,
@@ -509,7 +509,7 @@ dispatch_debug(dispatch_object_t dou, const char *msg, ...)
 	va_list ap;
 
 	va_start(ap, msg);
-	dispatch_debugv(dou._do, msg, ap);
+	dispatch_debugv(dou, msg, ap);
 	va_end(ap);
 }
 
@@ -589,7 +589,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 
 #if !USE_OBJC
 
-static const _os_object_class_s _os_object_class;
+static const _os_object_class_s _os_object_class = { 0 };
 
 void
 _os_object_init(void)

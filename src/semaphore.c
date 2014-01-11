@@ -90,7 +90,7 @@ dispatch_semaphore_create(long value)
 
 	dsema = _dispatch_alloc(DISPATCH_VTABLE(semaphore),
 			sizeof(struct dispatch_semaphore_s));
-	_dispatch_semaphore_init(value, dsema);
+	_dispatch_semaphore_init(value, DOBJ(dsema));
 	return dsema;
 }
 
@@ -161,8 +161,7 @@ _dispatch_platform_semaphore_dispose(dispatch_platform_semaphore_t sema)
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 	free(sema);
 #elif USE_WIN32_SEM
-	BOOL ret = CloseHandle(sema);
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+	DISPATCH_SEMAPHORE_VERIFY_RET(CloseHandle(sema));
 #endif
 }
 
@@ -239,7 +238,7 @@ _dispatch_platform_semaphore_wait(dispatch_platform_semaphore_t sema,
 		DISPATCH_SEMAPHORE_VERIFY_RET(success);
 	} else {
 		uint64_t nsec = _dispatch_timeout(timeout);
-		DWORD	msec = nsec / NSEC_PER_MSEC;
+		DWORD	msec = (DWORD)(nsec / NSEC_PER_MSEC);
 		ret = WaitForSingleObject(sema, msec);
 		BOOL success = ret == WAIT_OBJECT_0 || ret == WAIT_TIMEOUT;
 		DISPATCH_SEMAPHORE_VERIFY_RET(success);
@@ -270,7 +269,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 	size_t offset = 0;
 	offset += snprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dx_kind(dsema), dsema);
-	offset += _dispatch_object_debug_attr(dsema, &buf[offset], bufsiz - offset);
+	offset += _dispatch_object_debug_attr(DOBJ(dsema), &buf[offset], bufsiz - offset);
 	offset += snprintf(&buf[offset], bufsiz - offset, "handle = 0x%u, ",
 			dsema->dsema_handle);
 	offset += snprintf(&buf[offset], bufsiz - offset,
@@ -287,14 +286,14 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	// may return between the atomic increment and the semaphore_signal(),
 	// therefore an explicit reference must be held in order to safely access
 	// dsema after the atomic increment.
-	_dispatch_retain(dsema);
+	_dispatch_retain(DOBJ(dsema));
 
 	(void)dispatch_atomic_inc2o(dsema, dsema_sent_ksignals);
 
 	_dispatch_semaphore_create_handle(&dsema->dsema_handle);
 	_dispatch_platform_semaphore_signal(dsema->dsema_handle);
 
-	_dispatch_release(dsema);
+	_dispatch_release(DOBJ(dsema));
 	return 1;
 }
 
@@ -393,7 +392,7 @@ dispatch_group_create(void)
 {
 	dispatch_group_t dg = _dispatch_alloc(DISPATCH_VTABLE(group),
 			sizeof(struct dispatch_semaphore_s));
-	_dispatch_semaphore_init(LONG_MAX, dg);
+	_dispatch_semaphore_init(LONG_MAX, DOBJ(dg));
 	return dg;
 }
 
@@ -429,7 +428,7 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 		// async group notify blocks
 		do {
 			dispatch_async_f(head->dsn_queue, head->dsn_ctxt, head->dsn_func);
-			_dispatch_release(head->dsn_queue);
+			_dispatch_release(DOBJ(head->dsn_queue));
 			next = fastpath(head->dsn_next);
 			if (!next && head != tail) {
 				while (!(next = fastpath(head->dsn_next))) {
@@ -438,7 +437,7 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 			}
 			free(head);
 		} while ((head = next));
-		_dispatch_release(dsema);
+		_dispatch_release(DOBJ(dsema));
 	}
 	return 0;
 }
@@ -561,13 +560,13 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt,
 	dsn->dsn_queue = dq;
 	dsn->dsn_ctxt = ctxt;
 	dsn->dsn_func = func;
-	_dispatch_retain(dq);
+	_dispatch_retain(DOBJ(dq));
 	dispatch_atomic_store_barrier();
 	prev = dispatch_atomic_xchg2o(dsema, dsema_notify_tail, dsn);
 	if (fastpath(prev)) {
 		prev->dsn_next = dsn;
 	} else {
-		_dispatch_retain(dg);
+		_dispatch_retain(DOBJ(dg));
 		(void)dispatch_atomic_xchg2o(dsema, dsema_notify_head, dsn);
 		if (dsema->dsema_value == dsema->dsema_orig) {
 			_dispatch_group_wake(dsema);

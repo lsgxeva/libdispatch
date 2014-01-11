@@ -27,6 +27,7 @@
 #endif
 
 #include <stdint.h>
+#include <time.h>
 
 // <rdar://problem/6368156&7563559>
 #if TARGET_OS_MAC
@@ -52,7 +53,17 @@
 
 __BEGIN_DECLS
 
+#if TARGET_OS_WIN32
+struct timespec
+{
+  time_t tv_sec;
+  long tv_nsec;
+};
+#else
 struct timespec;
+#endif
+
+
 
 /*!
  * @typedef dispatch_time_t

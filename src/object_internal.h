@@ -54,8 +54,8 @@
 #else
 #define DISPATCH_VTABLE_SUBCLASS_INSTANCE(name, super, ...) \
 		const struct dispatch_##super##_vtable_s _dispatch_##name##_vtable = { \
-			._os_obj_xref_dispose = (void (*)(struct _os_object_s*))_dispatch_xref_dispose, \
-			._os_obj_dispose = (void (*)(struct _os_object_s*))_dispatch_dispose, \
+			._os_obj_xref_dispose = (void *)_dispatch_xref_dispose, \
+			._os_obj_dispose = (void *)_dispatch_dispose, \
 			__VA_ARGS__ \
 		}
 #endif // USE_OBJC
@@ -100,7 +100,7 @@
 	struct dispatch_queue_s *do_targetq; \
 	void *do_ctxt; \
 	void *do_finalizer; \
-	unsigned int do_suspend_cnt;
+	unsigned int do_suspend_cnt
 
 #define DISPATCH_OBJECT_GLOBAL_REFCNT		_OS_OBJECT_GLOBAL_REFCNT
 // "word and bit" must be a power of two to be safely subtracted
@@ -152,7 +152,7 @@ enum {
 
 DISPATCH_SUBCLASS_DECL(object, object);
 struct dispatch_object_s {
-	DISPATCH_STRUCT_HEADER(object);
+  DISPATCH_STRUCT_HEADER(object);
 };
 
 size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,

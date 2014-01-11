@@ -135,6 +135,8 @@
 
 #if __GNUC__
 #define DISPATCH_INLINE static __inline__
+#elif _MSC_VER
+#define DISPATCH_INLINE static __inline
 #else
 #define DISPATCH_INLINE static inline
 #endif

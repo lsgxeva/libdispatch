@@ -160,27 +160,22 @@ static struct dispatch_semaphore_s _dispatch_thread_mediator[] = {
 
 #define MAX_PTHREAD_COUNT 255
 
-struct dispatch_root_queue_context_s {
-	union {
-		struct {
-			unsigned int volatile dgq_pending;
+struct DISPATCH_CACHELINE_ALIGN dispatch_root_queue_context_s {
+	unsigned int volatile dgq_pending;
 #if DISPATCH_HAVE_WORKQUEUES
-			int dgq_wq_priority, dgq_wq_options;
+	int dgq_wq_priority, dgq_wq_options;
 #endif
 #if TARGET_OS_WIN32
-			TP_CALLBACK_ENVIRON* dgq_callback_environ;
-			TP_WORK* dgq_work_item;
+	TP_CALLBACK_ENVIRON *dgq_callback_environ;
+	TP_WORK *dgq_work_item;
 #endif
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
-			pthread_workqueue_t dgq_kworkqueue;
+	pthread_workqueue_t dgq_kworkqueue;
 #endif
-#if DISPATCH_ENABLE_SIMPLE_THREAD_POOL
-			dispatch_semaphore_t dgq_thread_mediator;
-			uint32_t dgq_thread_pool_size;
+#if DISPATCH_USE_PTHREAD_POOL
+	dispatch_semaphore_t dgq_thread_mediator;
+	uint32_t dgq_thread_pool_size;
 #endif
-		};
-		char _dgq_pad[DISPATCH_CACHELINE_SIZE];
-	};
 };
 
 DISPATCH_CACHELINE_ALIGN
@@ -2526,7 +2521,7 @@ _dispatch_worker_thread5(TP_CALLBACK_INSTANCE *instance DISPATCH_UNUSED,
 {
 	dispatch_queue_t dq = (dispatch_queue_t)context;
 	struct dispatch_root_queue_context_s *qc =
-		(struct dispatch_root_queue_context_s *)dq->do_ctxt;
+			(struct dispatch_root_queue_context_s *)dq->do_ctxt;
 
 	  (void)dispatch_atomic_dec2o(qc, dgq_pending);
 
