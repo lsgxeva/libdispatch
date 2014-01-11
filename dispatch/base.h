@@ -53,6 +53,43 @@
 #define DISPATCH_WARN_RESULT __attribute__((__warn_unused_result__))
 #define DISPATCH_MALLOC __attribute__((__malloc__))
 #define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
+#define DISPATCH_PRINTF(x,y) __attribute__((__format__(printf,x,y)))
+
+#elif _MSC_VER
+/*! @parseOnly */
+#define DISPATCH_NORETURN __declspec(noreturn)
+/*! @parseOnly */
+#define DISPATCH_NOTHROW 
+/*! @parseOnly */
+#define DISPATCH_NONNULL1
+/*! @parseOnly */
+#define DISPATCH_NONNULL2
+/*! @parseOnly */
+#define DISPATCH_NONNULL3
+/*! @parseOnly */
+#define DISPATCH_NONNULL4
+/*! @parseOnly */
+#define DISPATCH_NONNULL5
+/*! @parseOnly */
+#define DISPATCH_NONNULL6
+/*! @parseOnly */
+#define DISPATCH_NONNULL7
+/*! @parseOnly */
+#define DISPATCH_NONNULL_ALL
+/*! @parseOnly */
+#define DISPATCH_SENTINEL
+/*! @parseOnly */
+#define DISPATCH_PURE
+/*! @parseOnly */
+#define DISPATCH_CONST
+/*! @parseOnly */
+#define DISPATCH_WARN_RESULT
+/*! @parseOnly */
+#define DISPATCH_MALLOC
+#define DISPATCH_ALWAYS_INLINE
+/*! @parseOnly */
+#define DISPATCH_PRINTF(x,y)
+
 #else
 /*! @parseOnly */
 #define DISPATCH_NORETURN
@@ -86,6 +123,8 @@
 #define DISPATCH_MALLOC
 /*! @parseOnly */
 #define DISPATCH_ALWAYS_INLINE
+/*! @parseOnly */
+#define DISPATCH_PRINTF(x,y)
 #endif
 
 #if __GNUC__

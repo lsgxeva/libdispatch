@@ -224,7 +224,7 @@ typedef pthread_t _dispatch_thread_handle_t;
 #elif _MSC_VER
 // xxx fixme
 #define __func__ __FUNCTION__
-#define DISPATCH_NOINLINE //__attribute__((__noinline__))
+#define DISPATCH_NOINLINE __declspec(noinline)
 #define DISPATCH_USED //__attribute__((__used__))
 #define DISPATCH_UNUSED //__attribute__((__unused__))
 #define DISPATCH_WEAK //__attribute__((__weak__))
@@ -238,6 +238,14 @@ typedef pthread_t _dispatch_thread_handle_t;
 
 #define DISPATCH_CONCAT(x,y) DISPATCH_CONCAT1(x,y)
 #define DISPATCH_CONCAT1(x,y) x ## y
+
+#if __GNUC__
+#define DISPATCH_ALIGNAS(x) __attribute__((__aligned__((x))))
+#elif _MSC_VER
+#define DISPATCH_ALIGNAS(x) __declspec(align(x))
+#else
+#error "No platform support for DISPATCH_ALIGNAS"
+#endif
 
 // workaround 6368156
 #ifdef NSEC_PER_SEC
@@ -267,7 +275,7 @@ void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 #endif
 DISPATCH_NOINLINE DISPATCH_NORETURN
 void _dispatch_abort(size_t line, long val);
-DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
+DISPATCH_NOINLINE DISPATCH_PRINTF(1,2)
 void _dispatch_log(const char *msg, ...);
 
 #undef countof
