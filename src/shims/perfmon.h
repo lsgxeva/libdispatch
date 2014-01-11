@@ -31,7 +31,7 @@
 
 #if defined (USE_APPLE_TSD_OPTIMIZATIONS) && defined(SIMULATE_5491082) && \
 		(defined(__i386__) || defined(__x86_64__))
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define _dispatch_workitem_inc() asm("incq %%gs:%0" : "+m" \
 		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
 		_PTHREAD_TSD_OFFSET)) :: "cc")
@@ -64,7 +64,7 @@ _dispatch_workitem_dec(void)
 #endif /* USE_APPLE_TSD_OPTIMIZATIONS */
 
 // C99 doesn't define flsll() or ffsll()
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define flsll(x) flsl(x)
 #else
 static inline unsigned int

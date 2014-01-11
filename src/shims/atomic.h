@@ -165,7 +165,7 @@ __declspec(noreturn) static __forceinline void _dispatch_hardware_crash() {
 	"mfence" \
 	: : : "memory")
 #undef dispatch_atomic_maximally_synchronizing_barrier
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define dispatch_atomic_maximally_synchronizing_barrier() \
 	do { unsigned long _clbr; __asm__ __volatile__( \
 	"cpuid" \
@@ -197,7 +197,7 @@ __declspec(noreturn) static __forceinline void _dispatch_hardware_crash() {
 
 // GCC emits "sync" for __sync_synchronize() on ppc & ppc64
 #undef _dispatch_atomic_barrier
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define _dispatch_atomic_barrier() \
 	__asm__ __volatile__( \
 	"isync\n\t" \

@@ -54,6 +54,26 @@
 #define WITH_DISPATCH_IO 0
 #endif
 
+#if _MSC_VER
+#if defined(_M_X64)
+#define __x86_64__
+#elif defined(_M_IX86)
+#define __i386__
+#endif
+#endif
+
+#if _WIN32
+#define TARGET_OS_WIN32 1
+#endif
+
+#ifdef _WIN64
+#define __LLP64__
+#endif
+
+#if TARGET_OS_WIN32
+#define _WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#endif
 #if USE_OBJC && ((!TARGET_IPHONE_SIMULATOR && defined(__i386__)) || \
 		(!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 1080))
 // Disable Objective-C support on platforms with legacy objc runtime

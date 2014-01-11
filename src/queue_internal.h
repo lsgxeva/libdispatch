@@ -79,7 +79,7 @@ struct dispatch_queue_attr_s {
 
 #define DISPATCH_QUEUE_MIN_LABEL_SIZE 64
 
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define DISPATCH_QUEUE_CACHELINE_PAD (4*sizeof(void*))
 #else
 #define DISPATCH_QUEUE_CACHELINE_PAD (2*sizeof(void*))

@@ -52,7 +52,7 @@ main(void)
 {
 	dispatch_test_start("Dispatch Queue Finalizer");
 
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 	ctxt_magic = (void*)((uintptr_t)arc4random() << 32 | arc4random());
 #else
 	ctxt_magic = (void*)arc4random();

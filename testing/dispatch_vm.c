@@ -45,7 +45,7 @@
 #define NOTIFICATIONS 2
 #endif
 #define pg2mb(p) ((p) * ALLOC_SIZE/(1024*1024))
-#ifdef __LP64__
+#if defined(__LP64__) || defined(__LLP64__)
 #define MAXMEM ((size_t)SIZE_MAX)
 #else
 #define MAXMEM ((size_t)(3200ul*1024*1024))		// 3200MB
