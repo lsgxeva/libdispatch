@@ -219,10 +219,6 @@ struct kevent {
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#if TARGET_OS_WIN32
-#define _WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
 
 #if defined(_M_X64) && defined(_MSC_VER)
 #define __x86_64__
