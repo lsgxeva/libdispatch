@@ -24,6 +24,8 @@
  * relying on these interfaces WILL break.
  */
 
+#define NO_DISPATCH_SOURCES
+
 #ifndef __DISPATCH_INTERNAL__
 #define __DISPATCH_INTERNAL__
 
@@ -128,7 +130,9 @@
 /* private.h must be included last to avoid picking up installed headers. */
 #include "object_private.h"
 #include "queue_private.h"
+#ifndef NO_DISPATCH_SOURCES
 #include "source_private.h"
+#endif
 #include "data_private.h"
 #include "benchmark.h"
 #include "private.h"

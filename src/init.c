@@ -342,18 +342,18 @@ _dispatch_logfile_fallback(void)
 	FILE* f = NULL;
 #if !TARGET_OS_WIN32
 	{
-	size_t buf_len = 1024;
-	wchar_t tmpfile_path[buf_len];
-	DWORD dirname_length = GetTempPathW(buf_len, tmpfile_path);
-	if (!(0 < dirname_length && dirname_length < buf_len)) goto out;
+		size_t buf_len = 1024;
+		wchar_t tmpfile_path[buf_len];
+		DWORD dirname_length = GetTempPathW(buf_len, tmpfile_path);
+		if (!(0 < dirname_length && dirname_length < buf_len)) goto out;
 
-	wchar_t *p = tmpfile_path + dirname_length;
-	size_t remaining = buf_len - dirname_length;
-	if (_snwprintf_s(p, remaining, _TRUNCATE, L"\\libdispatch.%d.log",
-					 getpid()) < 0)
-		goto out;
+		wchar_t *p = tmpfile_path + dirname_length;
+		size_t remaining = buf_len - dirname_length;
+		if (_snwprintf_s(p, remaining, _TRUNCATE, L"\\libdispatch.%d.log",
+						 getpid()) < 0)
+			goto out;
 
-	(void)_wfopen_s(&f, temp_path, L"a");
+		(void)_wfopen_s(&f, temp_path, L"a");
 	}
 #else
 	char path[PATH_MAX];
@@ -660,6 +660,8 @@ void _dispatch_autorelease_pool_pop(void *pool) {
 #pragma mark -
 #pragma mark dispatch_source_types
 
+#ifndef NO_DISPATCH_SOURCES
+
 static void
 dispatch_source_type_timer_init(dispatch_source_t ds,
 	dispatch_source_type_t type DISPATCH_UNUSED,
@@ -943,3 +945,4 @@ _dispatch_mach_notify_send_once(mach_port_t notify DISPATCH_UNUSED)
 }
 
 #endif // HAVE_MACH
+#endif	// NO_DISPATCH_SOURCES

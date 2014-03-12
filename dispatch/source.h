@@ -92,6 +92,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 const struct dispatch_source_type_s _dispatch_source_type_data_or;
 
+#if !TARGET_OS_WIN32
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_SEND
  * @discussion A dispatch source that monitors a Mach port for dead name
@@ -149,6 +150,7 @@ const struct dispatch_source_type_s _dispatch_source_type_read;
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 const struct dispatch_source_type_s _dispatch_source_type_signal;
+#endif	// !TARGET_OS_WIN32
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_TIMER
@@ -162,6 +164,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 const struct dispatch_source_type_s _dispatch_source_type_timer;
 
+#if !TARGET_OS_WIN32
 /*!
  * @const DISPATCH_SOURCE_TYPE_VNODE
  * @discussion A dispatch source that monitors a file descriptor for events
@@ -173,7 +176,24 @@ const struct dispatch_source_type_s _dispatch_source_type_timer;
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 const struct dispatch_source_type_s _dispatch_source_type_vnode;
+#endif
 
+#define DISPATCH_SOURCE_TYPE_WAIT_OBJECT (&_dispatch_source_type_wait_object)
+DISPATCH_EXPORT
+const struct dispatch_source_type_s _dispatch_source_type_wait_object;
+
+#define DISPATCH_SOURCE_TYPE_WINDOW_MESSAGE \
+	(&_dispatch_source_type_window_message)
+DISPATCH_EXPORT
+const struct dispatch_source_type_s _dispatch_source_type_window_message;
+
+#define DISPATCH_SOURCE_TYPE_IO_COMPLETION \
+	(&_dispatch_source_type_io_completion)
+DISPATCH_EXPORT
+const struct dispatch_source_type_s _dispatch_source_type_io_completion;
+
+
+#if !TARGET_OS_WIN32
 /*!
  * @const DISPATCH_SOURCE_TYPE_WRITE
  * @discussion A dispatch source that monitors a file descriptor for available
@@ -185,6 +205,18 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode;
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 const struct dispatch_source_type_s _dispatch_source_type_write;
+
+#if TARGET_OS_WIN32
+/*!
+ * @typedef dispatch_source_iocp_result_t
+ */
+typedef struct dispatch_source_iocp_s {
+	struct _OVERLAPPED* overlapped_ptr;
+	size_t bytes_transferred;
+	struct dispatch_source_iocp_s* next_entry;
+}* dispatch_source_iocp_result_t;
+
+#endif	// TARGET_OS_WIN32
 
 /*!
  * @typedef dispatch_source_mach_send_flags_t
@@ -256,6 +288,18 @@ typedef unsigned long dispatch_source_proc_flags_t;
 #define DISPATCH_VNODE_REVOKE	0x40
 
 typedef unsigned long dispatch_source_vnode_flags_t;
+#endif	// !TARGET_OS_WIN32
+
+
+
+#if TARGET_OS_WIN32
+/*!
+ * @typedef dispatch_source_windows_message_t
+ */
+typedef struct dispatch_source_windows_message_s {
+	uintptr_t w_param, l_param;
+}* dispatch_source_windows_message_t;
+#endif
 
 __BEGIN_DECLS
 
