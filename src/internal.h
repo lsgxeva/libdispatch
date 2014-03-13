@@ -37,14 +37,12 @@
 #include <TargetConditionals.h>
 #endif
 
-#if HAVE_DECL_TAILQ_FOREACH_SAFE
-#include <sys/queue.h>
-#else
-#include "shims/queue.h"
-#endif
+#include <sys/types.h>
+#include <stddef.h>
 
-#if !HAVE_STRLCPY
-#include "shims/strlcpy.h"
+#if _WIN32	// XXX
+#define _WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 // FIXME
@@ -63,14 +61,12 @@
 #endif
 
 #if _WIN32
-#define TARGET_OS_WIN32 1
-#endif
-
 #ifdef _WIN64
 #define __LLP64__
 #endif
 
-#if TARGET_OS_WIN32
+#define TARGET_OS_WIN32 1
+
 #define _WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #endif
@@ -119,6 +115,15 @@
 #include <dispatch/once.h>
 #include <dispatch/data.h>
 #include <dispatch/io.h>
+
+#if HAVE_DECL_TAILQ_FOREACH_SAFE
+#include <sys/queue.h>
+#else
+#include "shims/queue.h"
+#endif
+#if !HAVE_STRLCPY
+#include "shims/strlcpy.h"
+#endif
 
 /* private.h must be included last to avoid picking up installed headers. */
 #include "object_private.h"
@@ -206,7 +211,9 @@ struct kevent {}; // fixme
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if HAVE_SYSLOG_H
 #include <syslog.h>
+#endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -231,10 +238,12 @@ typedef uintptr_t _dispatch_thread_handle_t;
 typedef pthread_t _dispatch_thread_handle_t;
 #endif
 
+#if __GNUC__
 #define DISPATCH_NOINLINE __attribute__((__noinline__))
 #define DISPATCH_USED __attribute__((__used__))
 #define DISPATCH_UNUSED __attribute__((__unused__))
 #define DISPATCH_WEAK __attribute__((__weak__))
+#define DISPATCH_ALIGNAS(x) __attribute__((__aligned__((x))))
 #if DISPATCH_DEBUG
 #define DISPATCH_ALWAYS_INLINE_NDEBUG
 #else
@@ -259,14 +268,6 @@ typedef pthread_t _dispatch_thread_handle_t;
 #define DISPATCH_CONCAT(x,y) DISPATCH_CONCAT1(x,y)
 #define DISPATCH_CONCAT1(x,y) x ## y
 
-#if __GNUC__
-#define DISPATCH_ALIGNAS(x) __attribute__((__aligned__((x))))
-#elif _MSC_VER
-#define DISPATCH_ALIGNAS(x) __declspec(align(x))
-#else
-#error "No platform support for DISPATCH_ALIGNAS"
-#endif
-
 // workaround 6368156
 #ifdef NSEC_PER_SEC
 #undef NSEC_PER_SEC
@@ -281,9 +282,14 @@ typedef pthread_t _dispatch_thread_handle_t;
 #define USEC_PER_SEC 1000000ull
 #define NSEC_PER_USEC 1000ull
 
+#if __GNUC__
 /* I wish we had __builtin_expect_range() */
 #define fastpath(x) ((typeof(x))__builtin_expect((long)(x), ~0l))
 #define slowpath(x) ((typeof(x))__builtin_expect((long)(x), 0l))
+#else
+#define fastpath(x) (x)
+#define slowpath(x) (x)
+#endif
 
 DISPATCH_NOINLINE
 void _dispatch_bug(size_t line, long val);
@@ -313,29 +319,53 @@ void _dispatch_log(const char *msg, ...);
  * library.
  */
 #define dispatch_assert(e) do { \
-		if (__builtin_constant_p(e)) { \
-			char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
-		} else { \
+		_dispatch_eval_if_constexpr(e, { \
+			char __compile_time_assert__[(bool)(e) ? -1 : 1]; \
+		}) else { \
 			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && !_e) { \
 				_dispatch_abort(__LINE__, (long)_e); \
 			} \
 		} \
 	} while (0)
+
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
  * and log the non-zero value
  */
 #define dispatch_assert_zero(e) do { \
-		if (__builtin_constant_p(e)) { \
-			char __compile_time_assert__[(bool)(e) ? -1 : 1] DISPATCH_UNUSED; \
-		} else { \
-			typeof(e) _e = slowpath(e); /* always eval 'e' */ \
+		_dispatch_eval_if_constexpr(e, { \
+			char __compile_time_assert__[(bool)(e) ? -1 : 1]; \
+		}) else { \
+			auto _e = slowpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && _e) { \
 				_dispatch_abort(__LINE__, (long)_e); \
 			} \
 		} \
 	} while (0)
+
+/*
+ * For reporting bugs in clients when using the "_debug" version of the library.
+ */
+#define dispatch_debug_assert(e, msg, ...) do { \
+		_dispatch_eval_if_constexpr(e, { \
+			char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
+		}) else { \
+			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
+			if (DISPATCH_DEBUG && !_e) { \
+				_dispatch_log("%s() 0x%lx: " msg, __func__, (long)_e, ##__VA_ARGS__); \
+				abort(); \
+			} \
+		} \
+	} while (0)
+
+/* Make sure the debug statments don't get too stale */
+#define _dispatch_debug(x, ...) do { \
+	if (DISPATCH_DEBUG) { \
+		_dispatch_log("libdispatch: %u\t%p\t" x, __LINE__, \
+				(void *)_dispatch_thread_self(), ##__VA_ARGS__); \
+	} \
+} while(0)
 
 /*
  * For reporting bugs or impedance mismatches between libdispatch and external
@@ -368,10 +398,8 @@ void _dispatch_log(const char *msg, ...);
 		} \
 		_e; \
 	})
-/*
- * A lot of API return zero upon success and not-zero on fail. Let's capture
- * and log the non-zero value
- */
+
+#undef dispatch_assume_zero
 #define dispatch_assume_zero(e) ({ \
 		typeof(e) _e = slowpath(e); /* always eval 'e' */ \
 		if (_e) { \
@@ -435,14 +463,6 @@ _dispatch_assume_handle(int line_number, HANDLE x) {
 #define dispatch_assume_zero(e) _dispatch_assume(__LINE__, !(e))
 #endif	// __GNUC__
 
-/* Make sure the debug statments don't get too stale */
-#define _dispatch_debug(x, args...) \
-({ \
-	if (DISPATCH_DEBUG) { \
-		_dispatch_log("libdispatch: %u\t%p\t" x, __LINE__, \
-				(void *)_dispatch_thread_self(), ##args); \
-	} \
-})
 
 #if DISPATCH_DEBUG
 #if HAVE_MACH
@@ -513,16 +533,17 @@ uint64_t _dispatch_timeout(dispatch_time_t when);
 struct timespec _dispatch_timeout_ts(dispatch_time_t when);
 #endif
 
+#if !TARGET_OS_WIN32
 extern bool _dispatch_safe_fork;
+#endif
 
-extern struct _dispatch_hw_config_s {
+struct _dispatch_hw_config_s {
 	uint32_t cc_max_active;
 	uint32_t cc_max_logical;
 	uint32_t cc_max_physical;
-} _dispatch_hw_config;
+};
 
-/* #includes dependent on internal.h */
-#include "shims.h"
+extern struct _dispatch_hw_config_s _dispatch_hw_config;
 
 #if DISPATCH_HAVE_WORKQUEUES
 #ifndef WORKQ_BG_PRIOQUEUE
@@ -629,6 +650,9 @@ extern struct _dispatch_hw_config_s {
 		_dispatch_set_crash_log_message("API MISUSE: " x); \
 		_dispatch_hardware_crash(); \
 	} while (0)
+
+/* #includes dependent on internal.h */
+#include "shims.h"
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
