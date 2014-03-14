@@ -364,7 +364,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 #ifdef O_SYMLINK
 					(path_data->oflag & O_SYMLINK) == O_SYMLINK ?
 #else
-                    0 ?
+					0 ?
 #endif
 					lstat(path_data->path, &st) : stat(path_data->path, &st),
 			case 0:

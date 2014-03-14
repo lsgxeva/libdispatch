@@ -157,7 +157,7 @@ _dispatch_timeout_ts(dispatch_time_t when)
 	ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
 	(void)dispatch_assume_zero(ret);
 	realtime = ts_realtime.tv_sec * NSEC_PER_SEC + ts_realtime.tv_nsec +
-	    (when - abstime);
+		(when - abstime);
 	ts_realtime.tv_sec = realtime / NSEC_PER_SEC;
 	ts_realtime.tv_nsec = realtime % NSEC_PER_SEC;
 	return (ts_realtime);

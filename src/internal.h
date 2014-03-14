@@ -398,7 +398,7 @@ extern struct _dispatch_hw_config_s {
 
 // Linux workarounds
 // FIXME: There's no doubt a cleaner way to do this.
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 #ifndef WORKQ_BG_PRIOQUEUE
 #define DISPATCH_NO_BG_PRIORITY 1
 #endif
@@ -406,12 +406,12 @@ extern struct _dispatch_hw_config_s {
 #if !HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 #define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
 #endif
-#endif  // HAVE_PTHREAD_WORKQUEUES
+#endif	// DISPATCH_HAVE_WORKQUEUES
 
 
 // SnowLeopard and iOS Simulator fallbacks
 
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 #ifndef WORKQ_BG_PRIOQUEUE
 #define WORKQ_BG_PRIOQUEUE 3
 #endif
@@ -432,7 +432,7 @@ extern struct _dispatch_hw_config_s {
 #undef HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 #define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 0
 #endif
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_HAVE_WORKQUEUES
 
 #if HAVE_MACH
 #if !defined(MACH_NOTIFY_SEND_POSSIBLE) || \

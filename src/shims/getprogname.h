@@ -29,7 +29,7 @@ getprogname(void)
 # if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
 	return program_invocation_short_name;
 # else
-#   error getprogname(3) is not available on this platform
+#	error getprogname(3) is not available on this platform
 # endif
 }
 #endif /* HAVE_GETPROGNAME */

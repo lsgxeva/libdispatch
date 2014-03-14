@@ -100,6 +100,16 @@
 #define DISPATCH_EXPECT(x, v) (x)
 #endif
 
+#if TARGET_OS_WIN32
+#if __cplusplus
+#define __BEGIN_DECLS extern "C" { 
+#define __END_DECLS }
+#else
+#define __BEGIN_DECLS 
+#define __END_DECLS
+#endif  // __cplusplus
+#endif  // TARGET_OS_WIN32
+
 typedef void (*dispatch_function_t)(void *);
 
 #endif

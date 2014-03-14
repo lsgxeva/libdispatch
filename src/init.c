@@ -705,7 +705,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
 			NOTE_RENAME
 #if HAVE_DECL_NOTE_REVOKE
-            |NOTE_REVOKE
+			|NOTE_REVOKE
 #endif
 #if HAVE_DECL_NOTE_NONE
 			|NOTE_NONE
@@ -795,7 +795,7 @@ const struct dispatch_source_type_s _dispatch_source_type_sock = {
 		.flags = EV_CLEAR,
 	},
 	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
-		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
+		NOTE_TIMEOUT | NOTE_NOSRCADDR |	 NOTE_IFDENIED | NOTE_SUSPEND |
 		NOTE_RESUME | NOTE_KEEPALIVE,
 #endif
 };

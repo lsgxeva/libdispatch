@@ -25,10 +25,10 @@
 
 #if __linux__
 #include <sys/eventfd.h>
-#define DISPATCH_LINUX_COMPAT 1
+#define TARGET_OS_LINUX 1
 #endif
 
-#if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG) && \
+#if (!DISPATCH_HAVE_WORKQUEUES || DISPATCH_DEBUG) && \
 		!defined(DISPATCH_USE_PTHREAD_POOL)
 #define DISPATCH_USE_PTHREAD_POOL 1
 #endif
@@ -36,7 +36,7 @@
 #define pthread_workqueue_t void*
 #endif
 
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 #define DISPATCH_WORKQ_OPTION_OVERCOMMIT WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
 #define DISPATCH_WORKQ_BG_PRIOQUEUE WORKQ_BG_PRIOQUEUE
 #define DISPATCH_WORKQ_LOW_PRIOQUEUE WORKQ_LOW_PRIOQUEUE
@@ -65,7 +65,7 @@ static void *_dispatch_worker_thread(void *context);
 static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
 #endif
 
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 static dispatch_queue_t _dispatch_queue_wakeup_main(void);
 static void _dispatch_main_queue_drain(void);
 #endif
@@ -78,7 +78,7 @@ static mach_port_t main_q_port;
 static void _dispatch_main_q_port_init(void *ctxt);
 #endif
 
-#if DISPATCH_LINUX_COMPAT
+#if TARGET_OS_LINUX
 static dispatch_once_t _dispatch_main_q_eventfd_pred;
 static void _dispatch_main_q_eventfd_init(void *ctxt);
 static int main_q_eventfd = -1;
@@ -138,12 +138,12 @@ struct dispatch_root_queue_context_s {
 	union {
 		struct {
 			unsigned int volatile dgq_pending;
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 			int dgq_wq_priority, dgq_wq_options;
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 			pthread_workqueue_t dgq_kworkqueue;
 #endif
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_HAVE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 			dispatch_semaphore_t dgq_thread_mediator;
 			uint32_t dgq_thread_pool_size;
@@ -156,7 +156,7 @@ struct dispatch_root_queue_context_s {
 DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -167,7 +167,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -178,7 +178,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -189,7 +189,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -200,7 +200,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -211,7 +211,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -222,7 +222,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -233,7 +233,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 		.dgq_wq_priority = DISPATCH_WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = DISPATCH_WORKQ_OPTION_OVERCOMMIT,
 #endif
@@ -421,7 +421,7 @@ static inline bool
 _dispatch_root_queues_init_workq(void)
 {
 	bool result = false;
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 	bool disable_wq = false;
 #if DISPATCH_USE_PTHREAD_POOL
 	disable_wq = slowpath(getenv("LIBDISPATCH_DISABLE_KWQ"));
@@ -476,7 +476,7 @@ _dispatch_root_queues_init_workq(void)
 #endif
 	}
 #endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_HAVE_WORKQUEUES
 	return result;
 }
 
@@ -538,7 +538,7 @@ libdispatch_init(void)
 			DISPATCH_ROOT_QUEUE_COUNT);
 	dispatch_assert(countof(_dispatch_root_queue_contexts) ==
 			DISPATCH_ROOT_QUEUE_COUNT);
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 	dispatch_assert(sizeof(_dispatch_wq2root_queues) /
 			sizeof(_dispatch_wq2root_queues[0][0]) ==
 			DISPATCH_ROOT_QUEUE_COUNT);
@@ -1439,7 +1439,7 @@ struct dispatch_barrier_sync_slow_s {
 
 struct dispatch_barrier_sync_slow2_s {
 	dispatch_queue_t dbss2_dq;
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 	dispatch_function_t dbss2_func;
 	void *dbss2_ctxt;
 #endif
@@ -1472,9 +1472,9 @@ _dispatch_barrier_sync_f_pop(dispatch_queue_t dq, dispatch_object_t dou,
 	}
 	return dbss2->dbss2_sema ? dbss2->dbss2_sema : 
 #if HAVE_MACH
-        MACH_PORT_DEAD;
+		MACH_PORT_DEAD;
 #else
-        (~0u);   /* The same value as MACH_PORT_DEAD */
+		(~0u);	 /* The same value as MACH_PORT_DEAD */
 #endif
 }
 
@@ -1484,7 +1484,7 @@ _dispatch_barrier_sync_f_slow_invoke(void *ctxt)
 	struct dispatch_barrier_sync_slow2_s *dbss2 = ctxt;
 
 	dispatch_assert(dbss2->dbss2_dq == _dispatch_queue_get_current());
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 	// When the main queue is bound to the main thread
 	if (dbss2->dbss2_dq == &_dispatch_main_q && pthread_main_np()) {
 		dbss2->dbss2_func(dbss2->dbss2_ctxt);
@@ -1513,7 +1513,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 
 	struct dispatch_barrier_sync_slow2_s dbss2 = {
 		.dbss2_dq = dq,
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 		.dbss2_func = func,
 		.dbss2_ctxt = ctxt,
 #endif
@@ -1530,7 +1530,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 	_dispatch_thread_semaphore_wait(dbss2.dbss2_sema);
 	_dispatch_put_thread_semaphore(dbss2.dbss2_sema);
 
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 	// Main queue bound to main thread
 	if (dbss2.dbss2_func == NULL) {
 		return;
@@ -1940,7 +1940,7 @@ _dispatch_wakeup(dispatch_object_t dou)
 	// if the source is suspended or canceled.
 	if (!dispatch_atomic_cmpxchg2o(dou._do, do_suspend_cnt, 0,
 			DISPATCH_OBJECT_SUSPEND_LOCK)) {
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 		if (dou._dq == &_dispatch_main_q) {
 			return _dispatch_queue_wakeup_main();
 		}
@@ -1955,7 +1955,7 @@ _dispatch_wakeup(dispatch_object_t dou)
 				// probe does
 }
 
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 DISPATCH_NOINLINE
 dispatch_queue_t
 _dispatch_queue_wakeup_main(void)
@@ -1979,7 +1979,7 @@ _dispatch_queue_wakeup_main(void)
 		}
 	}
 #endif
-#if DISPATCH_LINUX_COMPAT
+#if TARGET_OS_LINUX
 	dispatch_once_f(&_dispatch_main_q_eventfd_pred, NULL,
 			_dispatch_main_q_eventfd_init);
 	if (main_q_eventfd != -1) {
@@ -1992,7 +1992,7 @@ _dispatch_queue_wakeup_main(void)
 #endif
 	return NULL;
 }
-#endif  // DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#endif	// DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 
 DISPATCH_NOINLINE
 static void
@@ -2005,7 +2005,7 @@ _dispatch_queue_wakeup_global_slow(dispatch_queue_t dq, unsigned int n)
 	dispatch_debug_queue(dq, __func__);
 	dispatch_once_f(&pred, NULL, _dispatch_root_queues_init);
 
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 	if (qc->dgq_kworkqueue != (void*)(~0ul))
 #endif
@@ -2030,7 +2030,7 @@ _dispatch_queue_wakeup_global_slow(dispatch_queue_t dq, unsigned int n)
 #endif
 		return;
 	}
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_HAVE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 	if (dispatch_semaphore_signal(qc->dgq_thread_mediator)) {
 		return;
@@ -2066,7 +2066,7 @@ _dispatch_queue_wakeup_global2(dispatch_queue_t dq, unsigned int n)
 	if (!dq->dq_items_tail) {
 		return;
 	}
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_HAVE_WORKQUEUES
 	if (
 #if DISPATCH_USE_PTHREAD_POOL
 			(qc->dgq_kworkqueue != (void*)(~0ul)) &&
@@ -2076,8 +2076,8 @@ _dispatch_queue_wakeup_global2(dispatch_queue_t dq, unsigned int n)
 				"%p", dq);
 		return;
 	}
-#endif // HAVE_PTHREAD_WORKQUEUES
-	return 	_dispatch_queue_wakeup_global_slow(dq, n);
+#endif // DISPATCH_HAVE_WORKQUEUES
+	return	_dispatch_queue_wakeup_global_slow(dq, n);
 }
 
 static inline void
@@ -2232,7 +2232,7 @@ _dispatch_queue_serial_drain_till_empty(dispatch_queue_t dq)
 	_dispatch_force_cache_cleanup();
 }
 
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 void
 _dispatch_main_queue_drain(void)
 {
@@ -2531,7 +2531,7 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 
 static bool _dispatch_program_is_probably_callback_driven;
 
-#if DISPATCH_COCOA_COMPAT || DISPATCH_LINUX_COMPAT
+#if DISPATCH_COCOA_COMPAT || TARGET_OS_LINUX
 static bool main_q_is_draining;
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
@@ -2584,7 +2584,7 @@ _dispatch_main_queue_callback_4CF(mach_msg_header_t *msg DISPATCH_UNUSED)
 
 #endif
 
-#if DISPATCH_LINUX_COMPAT
+#if TARGET_OS_LINUX
 int
 dispatch_get_main_queue_eventfd_np()
 {
@@ -2598,7 +2598,7 @@ dispatch_main_queue_drain_np()
 {
 	if (!pthread_main_np()) {
 		DISPATCH_CLIENT_CRASH("dispatch_main_queue_drain_np() must be called on "
-		                      "the main thread");
+							  "the main thread");
 	}
 
 	if (main_q_is_draining) {
@@ -2695,7 +2695,7 @@ _dispatch_queue_cleanup2(void)
 		(void)dispatch_assume_zero(kr);
 	}
 #endif
-#if DISPATCH_LINUX_COMPAT
+#if TARGET_OS_LINUX
 	dispatch_once_f(&_dispatch_main_q_eventfd_pred, NULL,
 			_dispatch_main_q_eventfd_init);
 	int fd = main_q_eventfd;
